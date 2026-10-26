@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if peer %}WireGuard config · {{ peer.name }}{% else %}Link expired{% endif %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <style>
+    body{background:radial-gradient(1000px 600px at 50% -10%,#16233a,#080c14 70%);min-height:100vh;padding:36px 18px;color:var(--text)}
+    .share-wrap{max-width:920px;margin:0 auto}
+    .share-head{text-align:center;margin-bottom:26px}
+    .share-head h1{font-size:26px;margin:14px 0 6px}
+    .share-head p{color:var(--muted);font-size:14px}
+    .share-grid{display:grid;grid-template-columns:300px 1fr;gap:18px}
+    @media(max-width:760px){.share-grid{grid-template-columns:1fr}}
+    .share-qr{background:#fff;padding:16px;border-radius:18px;display:flex;align-items:center;justify-content:center}
+    .share-qr svg{width:100%;height:auto;max-width:260px}
+    .share-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+    .share-meta div{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+    .share-meta small{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+    .share-meta b{font-size:13px}
+    pre.code-block{max-height:320px;overflow:auto;font-size:11.5px}
+  </style>
+</head>
+<body>
+<svg class="svg-sprite" aria-hidden="true">
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v3h16v-3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+</svg>
+<div class="share-wrap">
+  <div class="share-head">
+    <div class="brand-mark lg" style="margin:auto"><svg viewBox="0 0 48 48"><path d="M24 3 6 11v12c0 11 7.6 18.6 18 22 10.4-3.4 18-11 18-22V11L24 3Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M16 24l5.5 5.5L33 18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    {% if error %}
+      <h1>Link unavailable</h1><p>{{ error }}</p>
+    {% else %}
+      <h1>Your WireGuard configuration</h1>
+      <p>Scan the QR code with the WireGuard app, or download the file and import it.</p>
+    {% endif %}
+  </div>
+  {% if not error %}
+  <div class="share-grid">
+    <div>
+      <div class="share-qr">{{ svg|safe }}</div>
+      <a class="btn btn-primary btn-block" style="margin-top:12px" href="/s/{{ token }}/qr.png"><svg class="icon"><use href="#i-download"/></svg> Download QR PNG</a>
+    </div>
+    <div class="panel" style="padding:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div><h2 style="font-size:18px">{{ peer.name }}</h2><p style="color:var(--muted);font-size:13px">{{ filename }}</p></div>
+        <a class="btn btn-primary" href="/s/{{ token }}/config"><svg class="icon"><use href="#i-download"/></svg> Download .conf</a>
+      </div>
+      <div class="share-meta">
+        <div><small>VPN address</small><b>{{ peer.vpn_ip }}</b></div>
+        <div><small>Endpoint</small><b>{{ endpoint }}</b></div>
+        <div><small>Expires</small><b>{{ peer.expires_h }}</b></div>
+        <div><small>Quota</small><b>{{ peer.quota_h }}</b></div>
+      </div>
+      <h3 style="margin:20px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Config file</h3>
+      <pre class="code-block" id="cfg">{{ config }}</pre>
+      <button class="btn btn-ghost btn-block" style="margin-top:12px" id="copy-btn"><svg class="icon"><use href="#i-copy"/></svg> Copy config</button>
+    </div>
+  </div>
+  <p style="text-align:center;color:var(--muted);font-size:12px;margin-top:24px">This link expires automatically. Keep the config private — it contains your personal private key.</p>
+  {% endif %}
+</div>
+<script>
+  const b=document.getElementById('copy-btn');
+  if(b) b.onclick=function(){
+    const text=document.getElementById('cfg').textContent;
+    const ok=function(){b.innerHTML='\u2713 Copied';setTimeout(function(){b.innerHTML='Copy config';},1800)};
+    const fallback=function(){
+      const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');
+      ta.style.cssText='position:fixed;top:-2000px';document.body.appendChild(ta);ta.select();
+      const done=document.execCommand('copy');ta.remove();done?ok():alert('Select the config text and copy it manually');
+    };
+    if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(text).then(ok).catch(fallback)}else{fallback()}
+  };
+</script>
+</body>
+</html>

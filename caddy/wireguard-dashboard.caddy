@@ -1,0 +1,28 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# Replace @@DOMAIN@@, @@EMAIL@@ and @@PORT@@ before use (install.sh does this).
+@@DOMAIN@@ {
+	tls @@EMAIL@@
+
+	encode gzip
+
+	@api path /api/*
+	header @api {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-X-Powered-By
+	}
+
+	reverse_proxy 127.0.0.1:@@PORT@@ {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote}
+	}
+
+	log {
+		output file /var/log/caddy/wireguard-dashboard.log
+		format console
+	}
+}

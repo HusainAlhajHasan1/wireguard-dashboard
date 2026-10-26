@@ -1,0 +1,19 @@
+{
+  "demo": false,
+  "install_dir": "/opt/wireguard-dashboard",
+  "config_dir": "/etc/wireguard-dashboard",
+  "data_dir": "/var/lib/wireguard-dashboard",
+  "db_path": "/var/lib/wireguard-dashboard/wgdash.db",
+  "key_path": "/var/lib/wireguard-dashboard/secret.key",
+  "backup_dir": "/var/lib/wireguard-dashboard/backups",
+  "wg_interface": "wg0",
+  "wg_conf": "/etc/wireguard/wg0.conf",
+  "wg_pubkey_file": "/etc/wireguard/publickey",
+  "wg_privkey_file": "/etc/wireguard/privatekey",
+  "public_endpoint": "vpn.example.com:51820",
+  "listen_host": "127.0.0.1",
+  "listen_port": 8080,
+  "public_url": "https://vpn.example.com",
+  "secret_key": "REPLACE_WITH_A_LONG_RANDOM_STRING",
+  "bootstrap_admin": null
+}

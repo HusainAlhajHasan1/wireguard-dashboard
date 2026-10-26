@@ -1,0 +1,26 @@
+[Unit]
+Description=WireGuard Dashboard (web UI, monitor and Telegram bot)
+Documentation=https://github.com/your-org/wireguard-dashboard
+After=network-online.target wg-quick@%i.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=@@INSTALL_DIR@@
+Environment=PYTHONUNBUFFERED=1
+Environment=WGDASH_CONFIG=@@CONFIG@@
+ExecStart=@@PYTHON@@ -m wgdash.server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+
+# The service must be able to write /etc/wireguard/wg0.conf and run `wg`.
+# Harden the network instead: bind to 127.0.0.1 behind Caddy (default).
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

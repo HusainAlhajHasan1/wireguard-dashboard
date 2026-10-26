@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · WireGuard Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+</head>
+<body class="login-body">
+  <div class="login-glow"></div>
+  <main class="login-wrap">
+    <section class="login-brand">
+      <div class="brand-mark lg">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3 6 11v12c0 11 7.6 18.6 18 22 10.4-3.4 18-11 18-22V11L24 3Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M16 24l5.5 5.5L33 18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1>WireGuard <span>Dashboard</span></h1>
+      <p>One place to manage every VPN user: live connections, country &amp; IP,
+         traffic quotas, QR codes, config delivery and Telegram alerts.</p>
+      <ul class="login-features">
+        <li><span>◆</span> Live online / offline status</li>
+        <li><span>◆</span> Per-user traffic &amp; expiry limits</li>
+        <li><span>◆</span> QR codes, config files &amp; share links</li>
+        <li><span>◆</span> Telegram bot control &amp; notifications</li>
+      </ul>
+    </section>
+
+    <section class="login-card">
+      <div class="login-card-head">
+        <h2>Welcome back</h2>
+        <p>Sign in to your control panel</p>
+      </div>
+      <form id="login-form" autocomplete="on">
+        <label class="field">
+          <span>Username</span>
+          <input id="username" name="username" type="text" autocomplete="username" required autofocus placeholder="admin">
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••••••">
+        </label>
+        <label class="field" id="totp-field" hidden>
+          <span>Authenticator code <small>(2FA)</small></span>
+          <input id="totp" name="totp" type="text" inputmode="numeric" pattern="[0-9]{6}" placeholder="000000" autocomplete="one-time-code">
+        </label>
+        <div class="login-error" id="login-error" role="alert"></div>
+        <button class="btn btn-primary btn-block" type="submit" id="login-btn">Sign in <span class="arrow">→</span></button>
+      </form>
+      {% if demo %}
+      <div class="demo-hint"><b>Demo mode</b><br>Username <code>admin</code> · Password <code>DemoAdmin123!</code></div>
+      {% endif %}
+      <div class="login-foot">Protected by scrypt password hashing, CSRF tokens and login rate limiting.</div>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('login-form');
+    const err = document.getElementById('login-error');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      err.textContent = ''; err.classList.remove('show');
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+            totp: document.getElementById('totp').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (/authenticator|2FA/i.test(data.error || '')) document.getElementById('totp-field').hidden = false;
+          throw new Error(data.error || 'Login failed');
+        }
+        location.href = '/';
+      } catch (ex) {
+        err.textContent = ex.message; err.classList.add('show');
+        btn.disabled = false; btn.innerHTML = 'Sign in <span class="arrow">→</span>';
+      }
+    });
+  </script>
+</body>
+</html>

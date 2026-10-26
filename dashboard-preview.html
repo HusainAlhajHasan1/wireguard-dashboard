@@ -1,0 +1,1443 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="preview">
+  <title>WireGuard Dashboard</title>
+  <style>
+/* WireGuard Dashboard — dark control panel, no external assets */
+:root{
+  --bg:#080c14; --bg-soft:#0d1320; --panel:#111a29; --panel-2:#162134;
+  --border:#22304a; --border-soft:#1a2539;
+  --text:#e9f0fb; --muted:#8b9ab3; --dim:#63718a;
+  --green:#3ddc84; --green-dark:#1fa363; --cyan:#38bdf8; --amber:#fbbf24;
+  --red:#f87171; --purple:#a78bfa;
+  --shadow:0 18px 50px rgba(0,0,0,.38);
+  --radius:16px;
+  --font:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+/* `hidden` must win over any display rule: .modal-backdrop, .field and
+   .twofa-setup are display:flex and would otherwise override it. */
+[hidden]{display:none!important}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,select,textarea{font:inherit;color:inherit}
+input,select,textarea{outline:none}
+::selection{background:rgba(61,220,132,.28)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#26334b;border-radius:8px}
+.svg-sprite{position:absolute;width:0;height:0;overflow:hidden}
+.icon{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.mono,code,pre{font-family:var(--mono)}
+.muted{color:var(--muted)}
+.hidden{display:none!important}
+
+/* ---------------- layout ---------------- */
+.app-shell{display:flex;min-height:100vh}
+.sidebar{width:248px;flex:none;background:linear-gradient(180deg,#0c1422 0%,#0a101c 100%);border-right:1px solid var(--border-soft);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:20}
+.brand{display:flex;align-items:center;gap:11px;padding:22px 20px 24px}
+.brand-mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,rgba(61,220,132,.22),rgba(56,189,248,.13));border:1px solid rgba(61,220,132,.3);color:var(--green);display:flex;align-items:center;justify-content:center;flex:none}
+.brand-mark svg{width:24px;height:24px}
+.brand-mark.lg{width:58px;height:58px;border-radius:17px}
+.brand-mark.lg svg{width:38px;height:38px}
+.brand-text{display:flex;flex-direction:column;line-height:1.15}
+.brand-text b{font-size:15.5px;letter-spacing:-.02em}
+.brand-text span{font-size:9.5px;letter-spacing:.2em;color:var(--green);font-weight:700;margin-top:3px}
+.nav{padding:8px 12px;display:flex;flex-direction:column;gap:4px;flex:1;overflow:auto}
+.nav-item{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;color:var(--muted);font-weight:500;font-size:13.5px;transition:.15s;position:relative}
+.nav-item:hover{background:rgba(255,255,255,.04);color:var(--text)}
+.nav-item.active{background:linear-gradient(90deg,rgba(61,220,132,.16),rgba(61,220,132,.03));color:var(--green);box-shadow:inset 0 0 0 1px rgba(61,220,132,.13)}
+.nav-item.active:before{content:"";position:absolute;left:-12px;top:11px;bottom:11px;width:3px;border-radius:0 3px 3px 0;background:var(--green)}
+.nav-item .icon{width:19px;height:19px}
+.nav-item em{margin-left:auto;font-style:normal;font-size:11px;background:rgba(255,255,255,.07);padding:2px 7px;border-radius:20px;color:var(--muted)}
+.nav-item em.dot-indicator{width:8px;height:8px;padding:0;border-radius:50%;background:#4b5568}
+.nav-item em.dot-indicator.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.sidebar-foot{padding:14px;border-top:1px solid var(--border-soft)}
+.server-pill{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--border-soft);border-radius:12px;background:rgba(255,255,255,.02);margin-bottom:10px}
+.server-pill div{display:flex;flex-direction:column;line-height:1.3}
+.server-pill b{font-size:12.5px;font-family:var(--mono)}
+.server-pill small{font-size:11px;color:var(--muted)}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(61,220,132,.55);animation:pulse 2s infinite;flex:none}
+.pulse.off{background:var(--red);animation:none;box-shadow:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,220,132,.5)}70%{box-shadow:0 0 0 8px rgba(61,220,132,0)}100%{box-shadow:0 0 0 0 rgba(61,220,132,0)}}
+.version{font-size:10.5px;color:var(--dim);text-align:center;margin-top:12px;letter-spacing:.04em}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:74px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:16px;padding:0 26px;background:rgba(8,12,20,.86);backdrop-filter:blur(14px);position:sticky;top:0;z-index:15}
+.topbar-title{flex:1;min-width:0}
+.topbar-title h1{margin:0;font-size:19px;letter-spacing:-.02em}
+.topbar-title p{margin:1px 0 0;font-size:12px;color:var(--muted)}
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.live-badge{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);background:rgba(61,220,132,.07);border:1px solid rgba(61,220,132,.15);padding:7px 11px;border-radius:30px;white-space:nowrap}
+.live-badge .pulse{width:6px;height:6px}
+.live-badge span:last-child{color:var(--dim)}
+.avatar{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#263b57,#1d2b42);border:1px solid var(--border);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:.04em}
+.menu-btn{display:none}
+.content{padding:24px 26px 40px;max-width:1720px;width:100%;margin:0 auto}
+.view{display:none;animation:fade .25s ease}
+.view.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---------------- buttons ---------------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn:hover{transform:translateY(-1px);border-color:#3a4d70;background:#1b2941}
+.btn:active{transform:none}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn .icon{width:16px;height:16px}
+.btn-primary{background:linear-gradient(135deg,var(--green),#26b36a);border-color:transparent;color:#04150c;box-shadow:0 6px 18px rgba(61,220,132,.18)}
+.btn-primary:hover{background:linear-gradient(135deg,#55e89b,#2cc176);border-color:transparent}
+.btn-ghost{background:transparent}
+.btn-danger{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.35);color:#ff9b9b}
+.btn-danger:hover{background:rgba(248,113,113,.18)}
+.btn-block{width:100%}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap}
+.icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--panel);display:grid;place-items:center;cursor:pointer;color:var(--muted);transition:.15s}
+.icon-btn:hover{color:var(--text);border-color:#3a4d70}
+.link{color:var(--green);font-size:12.5px;font-weight:600}
+.link:hover{text-decoration:underline}
+
+/* ---------------- panels / stats ---------------- */
+.stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:18px}
+.stat-card{background:linear-gradient(150deg,var(--panel),#0e1725);border:1px solid var(--border-soft);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden}
+.stat-card:after{content:"";position:absolute;right:-30px;top:-40px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,var(--accent,rgba(61,220,132,.12)),transparent 70%)}
+.stat-card .stat-top{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:600}
+.stat-card .stat-icon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(255,255,255,.05);color:var(--stat-color,var(--green))}
+.stat-card .stat-icon .icon{width:18px;height:18px}
+.stat-card .stat-value{font-size:28px;font-weight:700;letter-spacing:-.035em;margin-top:12px;line-height:1.1}
+.stat-card .stat-sub{font-size:11.5px;color:var(--dim);margin-top:6px}
+.panel-grid{display:grid;gap:16px;margin-bottom:18px}
+.panel-grid.two-col{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr)}
+.panel{background:var(--panel);border:1px solid var(--border-soft);border-radius:var(--radius);padding:20px;min-width:0}
+.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.panel-head h2{margin:0;font-size:15px;letter-spacing:-.01em}
+.panel-head p{margin:3px 0 0;font-size:11.5px;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted)}
+.badge-green{background:rgba(61,220,132,.12);border-color:rgba(61,220,132,.25);color:var(--green)}
+.badge-red{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.25);color:var(--red)}
+.badge-amber{background:rgba(251,191,36,.11);border-color:rgba(251,191,36,.25);color:var(--amber)}
+.segmented{display:flex;background:var(--bg-soft);border:1px solid var(--border-soft);border-radius:9px;padding:3px;gap:2px}
+.segmented button{border:0;background:transparent;color:var(--muted);font-size:11.5px;padding:5px 11px;border-radius:7px;cursor:pointer;font-weight:600}
+.segmented button.active{background:var(--panel-2);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.chip{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;transition:.15s}
+.chip:hover{color:var(--text)}
+.chip.active{background:rgba(61,220,132,.12);border-color:rgba(61,220,132,.3);color:var(--green)}
+.empty-state{text-align:center;padding:36px 16px;color:var(--dim);font-size:13px}
+.empty-state .icon{width:32px;height:32px;margin-bottom:10px;opacity:.6}
+
+/* ---------------- charts ---------------- */
+.chart-wrap{width:100%;height:230px;position:relative}
+.chart-wrap svg{width:100%;height:100%;overflow:visible}
+.chart-grid-line{stroke:#1e2b40;stroke-width:1}
+.chart-label{fill:#63718a;font-size:10px;font-family:var(--font)}
+.chart-legend{display:flex;gap:22px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+.chart-legend span{display:flex;align-items:center;gap:7px}
+.chart-legend b{color:var(--text);font-weight:600}
+.chart-legend i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.legend-dl{background:var(--green)}
+.legend-ul{background:var(--cyan)}
+.chart-tooltip{position:absolute;pointer-events:none;background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:11px;box-shadow:var(--shadow);white-space:nowrap;z-index:3}
+
+/* ---------------- lists ---------------- */
+.online-list,.event-list,.audit-list,.top-users,.backup-list,.token-list,.share-list{display:flex;flex-direction:column;gap:9px;max-height:290px;overflow:auto}
+.online-list.tall,.event-list.tall,.audit-list.tall{max-height:620px}
+.online-item{display:flex;align-items:center;gap:11px;padding:10px;border:1px solid var(--border-soft);border-radius:12px;background:rgba(255,255,255,.015)}
+.online-item:hover{border-color:var(--border)}
+.peer-avatar{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#233652,#1a2940);display:grid;place-items:center;font-size:11.5px;font-weight:700;color:var(--cyan);flex:none;letter-spacing:.03em}
+.peer-avatar.g{background:linear-gradient(135deg,#1c4a39,#153a2d);color:var(--green)}
+.peer-avatar.p{background:linear-gradient(135deg,#3b2c58,#2a2040);color:var(--purple)}
+.peer-avatar.a{background:linear-gradient(135deg,#4d3c1c,#3a2d15);color:var(--amber)}
+.item-main{flex:1;min-width:0}
+.item-main b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-main small{color:var(--muted);font-size:11px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-side{text-align:right;font-size:11px;color:var(--muted);white-space:nowrap}
+.item-side b{display:block;color:var(--text);font-size:12px}
+.flag{font-size:17px;line-height:1}
+.top-user{display:grid;grid-template-columns:26px 1fr 110px 68px;align-items:center;gap:10px;font-size:12.5px}
+.top-user .rank{color:var(--dim);font-family:var(--mono);font-size:11px}
+.top-user .uname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top-user .amt{text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.progress{height:6px;border-radius:6px;background:#1d2a3e;overflow:hidden}
+.progress i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width .4s}
+.progress.warn i{background:linear-gradient(90deg,var(--amber),var(--red))}
+.event-item{display:flex;gap:11px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--border-soft)}
+.event-item:last-child{border-bottom:0}
+.event-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;background:var(--dim)}
+.event-dot.connect,.event-dot.peer_added,.event-dot.server_restart{background:var(--green)}
+.event-dot.disconnect,.event-dot.peer_removed,.event-dot.peer_disabled,.event-dot.peer_blocked{background:var(--red)}
+.event-dot.keys_rotated,.event-dot.warning{background:var(--amber)}
+.event-body{flex:1;min-width:0;font-size:12.5px}
+.event-body b{font-weight:600}
+.event-body small{display:block;color:var(--dim);font-size:10.5px;margin-top:2px}
+.event-time{font-size:10.5px;color:var(--dim);white-space:nowrap}
+.audit-item{display:flex;gap:10px;align-items:center;font-size:12px;padding:8px 2px;border-bottom:1px solid var(--border-soft)}
+.audit-item:last-child{border:0}
+.audit-item code{font-size:11px;color:var(--cyan);background:rgba(56,189,248,.08);padding:2px 6px;border-radius:5px}
+.audit-item .actor{min-width:90px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audit-item .detail{color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audit-item time{color:var(--dim);font-size:10.5px;white-space:nowrap}
+
+/* ---------------- table ---------------- */
+.table-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:0 12px;min-width:240px;flex:1;max-width:330px}
+.search-box .icon{width:16px;height:16px;color:var(--dim)}
+.search-box input{border:0;background:transparent;padding:9px 0;width:100%;font-size:12.5px}
+.filter-chips{display:flex;gap:6px;flex-wrap:wrap}
+.toolbar-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.table-scroll{overflow-x:auto;border:1px solid var(--border-soft);border-radius:12px}
+.data-table{width:100%;border-collapse:collapse;min-width:1080px}
+.data-table th{text-align:left;font-size:10px;letter-spacing:.1em;color:var(--dim);font-weight:700;padding:12px 14px;background:#0e1725;border-bottom:1px solid var(--border-soft);white-space:nowrap}
+.data-table td{padding:12px 14px;border-bottom:1px solid var(--border-soft);font-size:12.5px;vertical-align:middle;white-space:nowrap}
+.data-table tr:last-child td{border-bottom:0}
+.data-table tbody tr{cursor:pointer;transition:.12s}
+.data-table tbody tr:hover{background:rgba(255,255,255,.025)}
+.peer-cell{display:flex;align-items:center;gap:10px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#52607a;flex:none}
+.status-dot.online{background:var(--green);box-shadow:0 0 8px rgba(61,220,132,.6)}
+.status-dot.disabled,.status-dot.expired,.status-dot.quota{background:var(--red)}
+.peer-cell b{font-size:12.5px;display:block}
+.peer-cell small{color:var(--dim);font-size:10.5px}
+.loc-cell{display:flex;align-items:center;gap:7px}
+.loc-cell small{display:block;color:var(--dim);font-size:10.5px}
+.quota-cell{min-width:110px}
+.quota-cell small{font-size:10.5px;color:var(--muted);display:block;margin-bottom:5px}
+.kebab{width:30px;height:30px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.kebab:hover{background:var(--panel-2);border-color:var(--border);color:var(--text)}
+.menu-pop{position:fixed;z-index:60;background:#141f31;border:1px solid var(--border);border-radius:11px;box-shadow:var(--shadow);padding:6px;min-width:190px}
+.menu-pop button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:0;background:transparent;color:var(--text);padding:9px 10px;border-radius:7px;font-size:12.5px;cursor:pointer}
+.menu-pop button:hover{background:rgba(255,255,255,.06)}
+.menu-pop button.danger{color:var(--red)}
+.menu-pop .icon{width:15px;height:15px}
+.menu-pop hr{border:0;border-top:1px solid var(--border-soft);margin:5px 2px}
+.table-foot{display:flex;justify-content:space-between;padding:12px 2px 0;font-size:11.5px;color:var(--muted)}
+
+/* ---------------- forms ---------------- */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field>span{font-size:11.5px;font-weight:600;color:var(--muted)}
+.field small{font-size:10.5px;color:var(--dim)}
+.field input,.field select,.field textarea,input.plain{background:var(--bg-soft);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12.5px;width:100%;transition:.15s}
+.field input:focus,.field select:focus,.field textarea:focus,input.plain:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(61,220,132,.1)}
+.field input:disabled{opacity:.6;cursor:not-allowed}
+.field textarea{resize:vertical;min-height:80px;font-family:var(--mono);font-size:11.5px}
+.field select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#8b9ab3 50%),linear-gradient(135deg,#8b9ab3 50%,transparent 50%);background-position:calc(100% - 17px) 17px,calc(100% - 12px) 17px;background-size:5px 5px;background-repeat:no-repeat}
+.field.check{display:flex;flex-direction:row;align-items:center;gap:9px}
+.field.check input{width:16px;height:16px;accent-color:var(--green)}
+.span-2{grid-column:span 2}
+.form-actions{display:flex;gap:10px;flex-wrap:wrap;padding-top:4px}
+.inline-field{flex-direction:row;align-items:center;justify-content:space-between;margin:16px 0}
+.inline-field input{width:130px}
+.toggle-list{display:flex;flex-direction:column;gap:2px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-soft)}
+.toggle-row:last-child{border:0}
+.toggle-row div{display:flex;flex-direction:column;min-width:0}
+.toggle-row b{font-size:12.5px;font-weight:600}
+.toggle-row small{font-size:10.5px;color:var(--dim)}
+.switch{position:relative;width:38px;height:21px;flex:none}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.switch span{position:absolute;inset:0;background:#2a3850;border-radius:20px;cursor:pointer;transition:.2s}
+.switch span:before{content:"";position:absolute;width:15px;height:15px;border-radius:50%;left:3px;top:3px;background:#9aa8be;transition:.2s}
+.switch input:checked+span{background:var(--green-dark)}
+.switch input:checked+span:before{transform:translateX(17px);background:#fff}
+.stack{display:flex;flex-direction:column;gap:16px}
+.divider{height:1px;background:var(--border-soft);margin:18px 0}
+.twofa-box{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.twofa-box h3{font-size:13px;margin:0 0 3px}
+.twofa-box p{font-size:11.5px;color:var(--muted);margin:0}
+.twofa-setup{display:flex;gap:16px;margin-top:16px;padding:14px;background:var(--bg-soft);border:1px solid var(--border-soft);border-radius:12px;flex-wrap:wrap}
+.twofa-setup>div:first-child{background:#fff;border-radius:10px;padding:8px;width:150px;height:150px;flex:none}
+.twofa-setup svg{width:100%;height:100%}
+.twofa-setup p{font-size:11.5px;color:var(--muted);margin:0 0 8px}
+.twofa-setup code{display:block;font-size:11px;color:var(--green);word-break:break-all;margin-bottom:10px}
+.twofa-setup .btn-row input{max-width:130px}
+.hint{font-size:11px;color:var(--dim);margin:12px 0 0}
+.hint code{color:var(--cyan);font-size:10.5px}
+.token-item,.share-item,.backup-item{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.015);font-size:12px}
+.token-item b,.share-item b,.backup-item b{font-size:12px}
+.token-item small,.share-item small,.backup-item small{color:var(--dim);font-size:10.5px;display:block}
+.token-item .icon-btn,.share-item .icon-btn,.backup-item .icon-btn{width:28px;height:28px}
+
+/* ---------------- server / telegram ---------------- */
+.kv-list{display:flex;flex-direction:column;gap:0}
+.kv-row{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px}
+.kv-row:last-child{border:0}
+.kv-row>span{color:var(--muted)}
+.kv-row>b{font-family:var(--mono);font-size:11.5px;text-align:right;word-break:break-all;max-width:62%}
+.danger-zone{margin-top:18px;border:1px solid rgba(248,113,113,.25);background:rgba(248,113,113,.05);border-radius:12px;padding:14px}
+.danger-zone h3{margin:0 0 5px;font-size:13px;color:#ff9b9b}
+.danger-zone p{font-size:11.5px;color:var(--muted);margin:0 0 12px}
+.code-block{background:#080d16;border:1px solid var(--border-soft);border-radius:10px;padding:14px;max-height:260px;overflow:auto;font-size:11px;line-height:1.65;color:#a9c4e8;margin:0;white-space:pre-wrap;word-break:break-all}
+.bot-hero{display:flex;gap:14px;align-items:center;padding:14px;background:linear-gradient(120deg,rgba(56,189,248,.09),rgba(167,139,250,.06));border:1px solid var(--border-soft);border-radius:12px;margin-bottom:16px}
+.bot-icon{width:50px;height:50px;border-radius:14px;background:rgba(56,189,248,.15);color:var(--cyan);display:grid;place-items:center;flex:none}
+.bot-icon .icon{width:27px;height:27px}
+.bot-hero h3{margin:0 0 3px;font-size:15px}
+.bot-hero p{margin:0;font-size:11.5px;color:var(--muted)}
+.bot-form{margin-bottom:16px}
+.command-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px}
+.command-card{border:1px solid var(--border-soft);border-radius:11px;padding:12px;background:rgba(255,255,255,.015)}
+.command-card code{display:block;color:var(--green);font-size:12px;margin-bottom:5px}
+.command-card span{font-size:11.5px;color:var(--muted)}
+
+/* ---------------- modal / drawer / toast ---------------- */
+.modal-backdrop,.drawer-backdrop{position:fixed;inset:0;background:rgba(3,6,12,.72);backdrop-filter:blur(4px);z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;animation:fade .15s}
+.modal-backdrop{z-index:70}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);width:min(560px,100%);max-height:90vh;display:flex;flex-direction:column}
+.modal.wide{width:min(760px,100%)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border-soft)}
+.modal-head h2{margin:0;font-size:16px}
+.modal-body{padding:20px;overflow:auto}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--border-soft);display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.modal-foot:empty{display:none}
+.drawer-backdrop{justify-content:flex-end;padding:0}
+.drawer{width:min(520px,100%);height:100vh;background:var(--panel);border-left:1px solid var(--border);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:slide .22s ease}
+@keyframes slide{from{transform:translateX(30px);opacity:.5}to{transform:none;opacity:1}}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:20px;border-bottom:1px solid var(--border-soft)}
+.drawer-head h2{margin:0;font-size:17px}
+.drawer-head p{margin:3px 0 0;color:var(--muted);font-size:11.5px}
+.drawer-body{padding:20px;overflow:auto;flex:1}
+.toast-stack{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;flex-direction:column;gap:9px;max-width:360px}
+.toast{background:#16233a;border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:12px 15px;box-shadow:var(--shadow);font-size:12.5px;animation:fade .2s}
+.toast.error{border-left-color:var(--red)}
+.toast.warn{border-left-color:var(--amber)}
+.toast b{display:block;margin-bottom:2px}
+.qr-wrap{background:#fff;border-radius:14px;padding:16px;display:grid;place-items:center;margin-bottom:14px}
+.qr-wrap svg{width:min(260px,100%);height:auto}
+.tabs{display:flex;gap:4px;background:var(--bg-soft);border:1px solid var(--border-soft);border-radius:10px;padding:3px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);font-size:12px;padding:8px;border-radius:8px;cursor:pointer;font-weight:600}
+.tabs button.active{background:var(--panel-2);color:var(--text)}
+.detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.detail-stats div{background:var(--bg-soft);border:1px solid var(--border-soft);border-radius:11px;padding:11px}
+.detail-stats small{display:block;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.07em}
+.detail-stats b{font-size:15px}
+.detail-section{margin:20px 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);font-weight:700}
+.conf-box{background:#080d16;border:1px solid var(--border-soft);border-radius:10px;padding:12px;font-size:10.5px;line-height:1.6;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:#a9c4e8}
+.share-url{display:flex;gap:8px;align-items:center;background:var(--bg-soft);border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:11px;word-break:break-all;font-family:var(--mono);color:var(--cyan);margin:10px 0}
+
+/* ---------------- login ---------------- */
+.login-body{min-height:100vh;background:radial-gradient(900px 520px at 12% -10%,#142b2a,#080c14 60%),radial-gradient(700px 500px at 100% 100%,#17213c,#080c14 60%);display:grid;place-items:center;padding:30px 18px;overflow:hidden}
+.login-glow{position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(circle at 50% 40%,#000,transparent 75%);pointer-events:none}
+.login-wrap{width:min(940px,100%);display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;position:relative;z-index:1}
+.login-brand h1{font-size:38px;letter-spacing:-.045em;margin:20px 0 12px;line-height:1.1}
+.login-brand h1 span{color:var(--green)}
+.login-brand>p{color:var(--muted);font-size:14px;line-height:1.75;max-width:420px}
+.login-features{list-style:none;padding:0;margin:26px 0 0;display:grid;gap:11px;color:#b9c8dc;font-size:13px}
+.login-features li{display:flex;gap:10px;align-items:center}
+.login-features span{color:var(--green);font-size:9px}
+.login-card{background:rgba(17,26,41,.9);border:1px solid var(--border);border-radius:20px;padding:30px;box-shadow:var(--shadow);backdrop-filter:blur(12px)}
+.login-card-head h2{margin:0 0 4px;font-size:22px;letter-spacing:-.02em}
+.login-card-head p{margin:0 0 24px;color:var(--muted);font-size:12.5px}
+.login-card .field{margin-bottom:15px}
+.login-card .field input{padding:12px 13px;background:#0b1220}
+.login-card .btn{padding:12px;margin-top:6px;font-size:13.5px}
+.login-error{display:none;color:#ff9b9b;font-size:12px;background:rgba(248,113,113,.09);border:1px solid rgba(248,113,113,.25);border-radius:8px;padding:9px 11px;margin-bottom:12px}
+.login-error.show{display:block}
+.demo-hint{margin-top:16px;background:rgba(56,189,248,.07);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:11px 13px;font-size:11.5px;color:#a9c4e8}
+.demo-hint code{color:var(--green)}
+.login-foot{font-size:10.5px;color:var(--dim);text-align:center;margin-top:20px;line-height:1.6}
+
+/* ---------------- responsive ---------------- */
+@media(max-width:1200px){
+  .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .panel-grid.two-col{grid-template-columns:1fr}
+  .login-wrap{gap:26px}
+}
+@media(max-width:900px){
+  .sidebar{position:fixed;left:-260px;transition:left .22s;box-shadow:var(--shadow)}
+  .sidebar.open{left:0}
+  .menu-btn{display:grid}
+  .content{padding:18px 16px 40px}
+  .topbar{padding:0 16px;height:66px}
+  .live-badge{display:none}
+  .login-wrap{grid-template-columns:1fr;max-width:460px}
+  .login-brand{display:none}
+}
+@media(max-width:620px){
+  .stat-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .stat-card{padding:14px}
+  .stat-card .stat-value{font-size:22px}
+  .form-grid{grid-template-columns:1fr}
+  .span-2{grid-column:span 1}
+  .topbar-title p{display:none}
+  #add-peer-top span{display:none}
+  .table-toolbar{align-items:stretch}
+  .toolbar-actions{margin-left:0;width:100%}
+  .panel{padding:15px}
+  .detail-stats{grid-template-columns:1fr 1fr}
+  .modal-foot{justify-content:stretch}
+  .modal-foot .btn{flex:1}
+}
+
+</style>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2216%22 fill=%22%230f172a%22/%3E%3Cpath d=%22M32 8 12 17v15c0 13 9 22 20 25 11-3 20-12 20-25V17z%22 fill=%22none%22 stroke=%22%233ddc84%22 stroke-width=%223%22/%3E%3C/svg%3E">
+</head>
+<body>
+<svg class="svg-sprite" aria-hidden="true">
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.5-3.4 2.6-5.2 5.5-5.2s5 1.8 5.5 5.2"/><path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 20c-.2-1.9-.8-3.4-1.9-4.4 2.8-.3 4.6 1.3 5 4.4"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><circle cx="7" cy="7" r="1"/><circle cx="7" cy="17" r="1"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="12" rx="3"/><path d="M12 3.5V7M8 12.5h.01M16 12.5h.01M9 16h6"/><circle cx="12" cy="3.5" r="1"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1-2.8-2.8.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.8-2.8.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3h4v.1A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.9-.3l.1-.1 2.8 2.8-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21v4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v3h16v-3"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.6M20 5v6h-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M14 8l4 4-4 4M8 12h10"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v7c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.6 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.6-3.8-9S9.5 5.5 12 3Z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><path d="M12 12h9l-2 3 2 3h-3"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a4 4 0 0 0 5.7 0l3-3A4 4 0 0 0 13 4.3l-1.8 1.8M14 11a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 19.7l1.8-1.8"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 20 4.5-1 10-10-3.5-3.5-10 10L4 20ZM14.5 6.5 18 10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 9a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 4h13l3 3v13H4zM8 4v6h8V4M8 20v-6h8v6"/></symbol>
+</svg>
+
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 48 48"><path d="M24 3 6 11v12c0 11 7.6 18.6 18 22 10.4-3.4 18-11 18-22V11L24 3Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M16 24l5.5 5.5L33 18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="brand-text"><b>WireGuard</b><span>DASHBOARD</span></div>
+    </div>
+    <nav class="nav">
+      <a class="nav-item active" data-view="overview" href="#overview"><svg class="icon"><use href="#i-grid"/></svg><span>Overview</span></a>
+      <a class="nav-item" data-view="peers" href="#peers"><svg class="icon"><use href="#i-users"/></svg><span>Peers</span><em id="nav-peer-count">0</em></a>
+      <a class="nav-item" data-view="server" href="#server"><svg class="icon"><use href="#i-server"/></svg><span>Server</span></a>
+      <a class="nav-item" data-view="telegram" href="#telegram"><svg class="icon"><use href="#i-bot"/></svg><span>Telegram bot</span><em class="dot-indicator" id="nav-bot-dot"></em></a>
+      <a class="nav-item" data-view="settings" href="#settings"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span></a>
+      <a class="nav-item" data-view="activity" href="#activity"><svg class="icon"><use href="#i-activity"/></svg><span>Activity log</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="server-pill"><span class="pulse" id="server-pulse"></span><div><b id="sidebar-server">wg0</b><small id="sidebar-server-status">checking…</small></div></div>
+      <button class="btn btn-ghost btn-block" id="logout-btn"><svg class="icon"><use href="#i-logout"/></svg> Sign out</button>
+      <div class="version">v1.0.0 · <span id="demo-badge">DEMO MODE</span></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Menu"><svg class="icon"><use href="#i-grid"/></svg></button>
+      <div class="topbar-title"><h1 id="page-title">Overview</h1><p id="page-sub">Live VPN status and traffic</p></div>
+      <div class="topbar-actions">
+        <div class="live-badge"><span class="pulse"></span> Live <span id="last-updated">just now</span></div>
+        <button class="icon-btn" id="refresh-btn" title="Refresh now"><svg class="icon"><use href="#i-refresh"/></svg></button>
+        <button class="btn btn-primary" id="add-peer-top"><svg class="icon"><use href="#i-plus"/></svg> Add peer</button>
+        <div class="avatar" title="admin">AD</div>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- ================= OVERVIEW ================= -->
+      <section class="view active" id="view-overview">
+        <div class="stat-grid" id="stat-grid"></div>
+        <div class="panel-grid two-col">
+          <div class="panel chart-panel">
+            <div class="panel-head"><div><h2>Traffic</h2><p id="chart-subtitle">Upload &amp; download over the last 24 hours</p></div>
+              <div class="segmented" id="chart-range">
+                <button data-hours="6">6h</button><button class="active" data-hours="24">24h</button><button data-hours="168">7d</button>
+              </div>
+            </div>
+            <div class="chart-wrap" id="traffic-chart"></div>
+            <div class="chart-legend"><span><i class="legend-dl"></i> Download <b id="legend-rx">0 B</b></span><span><i class="legend-ul"></i> Upload <b id="legend-tx">0 B</b></span></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Connected right now</h2><p>Who is on the VPN and where from</p></div><span class="badge badge-green" id="online-badge">0 online</span></div>
+            <div class="online-list" id="online-list"></div>
+          </div>
+        </div>
+        <div class="panel-grid two-col">
+          <div class="panel">
+            <div class="panel-head"><div><h2>Top users by traffic</h2><p>All-time data transfer per peer</p></div><a class="link" data-view-link="peers" href="#peers">View all →</a></div>
+            <div class="top-users" id="top-users"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Recent activity</h2><p>Connections, changes and alerts</p></div><a class="link" data-view-link="activity" href="#activity">Full log →</a></div>
+            <div class="event-list" id="overview-events"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PEERS ================= -->
+      <section class="view" id="view-peers">
+        <div class="panel">
+          <div class="table-toolbar">
+            <div class="search-box"><svg class="icon"><use href="#i-search"/></svg><input id="peer-search" placeholder="Search name, IP or country…"></div>
+            <div class="filter-chips" id="peer-filters">
+              <button class="chip active" data-filter="all">All</button><button class="chip" data-filter="online">Online</button>
+              <button class="chip" data-filter="offline">Offline</button><button class="chip" data-filter="disabled">Disabled</button>
+            </div>
+            <div class="toolbar-actions"><button class="btn btn-ghost" id="sync-btn"><svg class="icon"><use href="#i-refresh"/></svg> Sync wg0.conf</button><button class="btn btn-primary" id="add-peer-btn"><svg class="icon"><use href="#i-plus"/></svg> Add peer</button></div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="peers-table">
+              <thead><tr><th>PEER</th><th>VPN IP</th><th>LOCATION</th><th>SOURCE IP</th><th>LAST SEEN</th><th>↓ / ↑ TRAFFIC</th><th>QUOTA</th><th>EXPIRES</th><th></th></tr></thead>
+              <tbody id="peers-tbody"></tbody>
+            </table>
+          </div>
+          <div class="table-foot"><span id="peer-count-label">0 peers</span><span>Total traffic: <b id="peer-total-traffic">0 B</b></span></div>
+        </div>
+      </section>
+
+      <!-- ================= SERVER ================= -->
+      <section class="view" id="view-server">
+        <div class="stat-grid" id="server-stat-grid"></div>
+        <div class="panel-grid two-col">
+          <div class="panel">
+            <div class="panel-head"><div><h2>Interface settings</h2><p>Changes to address or port need a restart</p></div></div>
+            <form id="interface-form" class="form-grid">
+              <label class="field"><span>Address</span><input name="address" placeholder="10.8.0.1/24"></label>
+              <label class="field"><span>Listen port</span><input name="listen_port" type="number" placeholder="51820"></label>
+              <label class="field"><span>DNS pushed to clients (from Settings)</span><input id="srv-dns" disabled></label>
+              <label class="field"><span>MTU</span><input name="mtu" type="number" placeholder="1420"></label>
+              <label class="field span-2"><span>PostUp</span><input name="postup" placeholder="iptables …"></label>
+              <label class="field span-2"><span>PostDown</span><input name="postdown" placeholder="iptables …"></label>
+              <label class="field span-2"><span>SaveConfig</span><select name="saveconfig"><option value="false">false (recommended)</option><option value="true">true</option></select></label>
+              <div class="form-actions span-2"><button class="btn btn-primary" type="submit"><svg class="icon"><use href="#i-save"/></svg> Save interface</button><button class="btn btn-ghost" type="button" id="restart-btn"><svg class="icon"><use href="#i-refresh"/></svg> Restart WireGuard</button></div>
+            </form>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Server identity</h2><p>Share the endpoint, never the private key</p></div></div>
+            <div class="kv-list" id="server-kv"></div>
+            <div class="danger-zone">
+              <h3>Danger zone</h3>
+              <p>Rotating the server keypair invalidates <b>every</b> existing client config. Download fresh configs afterwards.</p>
+              <button class="btn btn-danger" id="rotate-btn"><svg class="icon"><use href="#i-key"/></svg> Rotate server keys</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel-grid two-col">
+          <div class="panel">
+            <div class="panel-head"><div><h2>Backups</h2><p>Automatic before every change, plus manual snapshots</p></div><div class="btn-row"><button class="btn btn-ghost" id="backup-zip-btn"><svg class="icon"><use href="#i-download"/></svg> Full ZIP</button><button class="btn btn-ghost" id="backup-btn">+ Backup</button></div></div>
+            <div class="backup-list" id="backup-list"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Raw wg0.conf</h2><p>The server private key is redacted here and never sent to the browser</p></div><span class="badge">read-only</span></div>
+            <pre class="code-block" id="raw-config">Loading…</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TELEGRAM ================= -->
+      <section class="view" id="view-telegram">
+        <div class="panel-grid two-col">
+          <div class="panel">
+            <div class="panel-head"><div><h2>Bot connection</h2><p>Control your VPN from Telegram</p></div><span class="badge" id="bot-status-badge">Not configured</span></div>
+            <div class="bot-hero"><div class="bot-icon"><svg class="icon"><use href="#i-bot"/></svg></div><div><h3 id="bot-name">@your_bot</h3><p id="bot-desc">Create a bot with @BotFather, paste the token below, then add your chat ID.</p></div></div>
+            <form id="telegram-form" class="form-grid">
+              <label class="field span-2"><span>Bot token</span><input name="telegram_token" type="password" placeholder="123456789:AAH…" autocomplete="off"><small>Stored encrypted. Get it from @BotFather on Telegram.</small></label>
+              <label class="field span-2"><span>Admin chat IDs</span><input name="telegram_admins" placeholder="123456789, 987654321"><small>Comma separated. Send /start to the bot, then use /whoami to find your chat ID.</small></label>
+              <div class="form-actions span-2"><button class="btn btn-primary" type="submit"><svg class="icon"><use href="#i-save"/></svg> Save &amp; connect</button><button class="btn btn-ghost" type="button" id="telegram-test-btn"><svg class="icon"><use href="#i-bell"/></svg> Send test message</button></div>
+            </form>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Notifications</h2><p>What the bot should announce</p></div></div>
+            <div class="toggle-list" id="notify-toggles"></div>
+            <label class="field inline-field"><span>Daily report time</span><input type="time" id="daily-time" value="09:00"></label>
+            <button class="btn btn-ghost btn-block" id="save-notify-btn"><svg class="icon"><use href="#i-save"/></svg> Save notification preferences</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><h2>Bot commands</h2><p>Only whitelisted admin chat IDs can run these</p></div></div>
+          <div class="command-grid" id="command-grid"></div>
+        </div>
+      </section>
+
+      <!-- ================= SETTINGS ================= -->
+      <section class="view" id="view-settings">
+        <div class="panel-grid two-col">
+          <div class="panel">
+            <div class="panel-head"><div><h2>General settings</h2><p>Defaults used when creating new peers</p></div></div>
+            <form id="settings-form" class="form-grid">
+              <label class="field"><span>Online timeout (seconds)</span><input type="number" name="online_timeout" min="30" max="3600"></label>
+              <label class="field"><span>Sample interval (seconds)</span><input type="number" name="sample_interval" min="5" max="3600"></label>
+              <label class="field span-2"><span>Client DNS servers</span><input name="default_dns" placeholder="1.1.1.1, 8.8.8.8"></label>
+              <label class="field span-2"><span>Default AllowedIPs (full tunnel)</span><input name="default_allowed_ips" placeholder="0.0.0.0/0, ::/0"></label>
+              <label class="field"><span>Default MTU</span><input type="number" name="default_mtu"></label>
+              <label class="field"><span>Persistent keepalive</span><input type="number" name="default_keepalive"></label>
+              <label class="field"><span>Default expiry (days, 0 = never)</span><input type="number" name="default_expiry_days"></label>
+              <label class="field"><span>Default quota (GB, 0 = unlimited)</span><input type="number" name="default_quota_gb" step="0.5"></label>
+              <label class="field"><span>Share link lifetime (hours)</span><input type="number" name="share_link_hours"></label>
+              <label class="field"><span>History retention (days)</span><input type="number" name="history_days"></label>
+              <label class="field"><span>Public endpoint override</span><input name="endpoint" placeholder="vpn.example.com:51820"><small>Leave empty to auto-detect the server's public IP.</small></label>
+              <label class="field"><span>GeoIP provider</span><select name="geoip_provider"><option value="auto">Auto (ipwho.is → ipinfo → ip-api)</option><option value="ipwho.is">ipwho.is</option><option value="ipinfo.io">ipinfo.io</option><option value="ip-api.com">ip-api.com</option></select></label>
+              <label class="field span-2"><span>ipinfo.io token (optional)</span><input name="geoip_token" type="password" placeholder="Optional API token"></label>
+              <div class="toggle-list span-2" id="settings-toggles"></div>
+              <div class="form-actions span-2"><button class="btn btn-primary" type="submit"><svg class="icon"><use href="#i-save"/></svg> Save settings</button></div>
+            </form>
+          </div>
+          <div class="stack">
+            <div class="panel">
+              <div class="panel-head"><div><h2>Account security</h2><p>Change the password you set during install</p></div></div>
+              <form id="password-form" class="form-grid">
+                <label class="field span-2"><span>Current password</span><input type="password" name="current" required></label>
+                <label class="field span-2"><span>New password (min. 10 chars)</span><input type="password" name="new" required minlength="10"></label>
+                <div class="form-actions span-2"><button class="btn btn-primary" type="submit">Update password</button></div>
+              </form>
+              <div class="divider"></div>
+              <div class="twofa-box"><div><h3>Two-factor authentication</h3><p id="twofa-status">Protect this panel with an authenticator app.</p></div><button class="btn btn-ghost" id="twofa-btn">Set up 2FA</button></div>
+              <div id="twofa-setup" class="twofa-setup" hidden><div id="twofa-qr"></div><div><p>Scan this QR with Google Authenticator, Aegis or 1Password, then enter the 6-digit code.</p><code id="twofa-secret"></code><div class="btn-row"><input id="twofa-code" placeholder="000000" inputmode="numeric" maxlength="6"><button class="btn btn-primary" id="twofa-verify">Verify &amp; enable</button></div></div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><h2>API tokens</h2><p>For scripts and external automation</p></div><button class="btn btn-ghost" id="new-token-btn"><svg class="icon"><use href="#i-plus"/></svg> New token</button></div>
+              <div id="token-list" class="token-list"></div>
+              <p class="hint">Use <code>X-API-Key: &lt;token&gt;</code> or <code>Authorization: Bearer &lt;token&gt;</code> with any <code>/api/*</code> endpoint.</p>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><h2>Active share links</h2><p>One-time config delivery pages</p></div></div>
+              <div id="share-list" class="share-list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ACTIVITY ================= -->
+      <section class="view" id="view-activity">
+        <div class="panel-grid two-col">
+          <div class="panel">
+            <div class="panel-head"><div><h2>Connection events</h2><p>Connects, disconnects, alerts and peer changes</p></div><button class="btn btn-ghost" id="events-refresh"><svg class="icon"><use href="#i-refresh"/></svg> Refresh</button></div>
+            <div class="event-list tall" id="activity-events"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Audit trail</h2><p>Every administrative action</p></div></div>
+            <div class="audit-list tall" id="audit-list"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALS ================= -->
+<div class="modal-backdrop" id="modal-backdrop" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <div class="modal-head"><h2 id="modal-title">Modal</h2><button class="icon-btn" id="modal-close" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div class="drawer-backdrop" id="drawer-backdrop" hidden>
+  <aside class="drawer" id="drawer"><div class="drawer-head"><div><h2 id="drawer-title">Peer</h2><p id="drawer-sub"></p></div><button class="icon-btn" id="drawer-close"><svg class="icon"><use href="#i-x"/></svg></button></div><div class="drawer-body" id="drawer-body"></div></aside>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+<script>
+/* Offline preview: all API responses are embedded below. */
+window.__WGDASH_FIXTURES__ = {"state":{"version":"1.0.0","time":1792967651,"uptime":0,"demo":true,"server":{"interface":"wg0","active":true,"listen_port":54240,"address":"10.8.0.1/24","public_key":"Qr3iTSCVeKh4Cd+RWjUX/Bvrg3yo+RoXK6cxEa+CYmw=","endpoint":"vpn.example.com:54240","config_path":"/home/user/wireguard-dashboard/demo-data/wg0.conf","dns":"","mtu":0,"postup":"iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE","postdown":"iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE","network":"10.8.0.0/24","hostname":"e2b.local","services":{"AdGuard Home":"inactive","Caddy":"inactive","WireGuard":"inactive"}},"peers":[{"id":"p-3fe9be997e9b","pubkey":"UA+kbN5zBME1cPkQ8+v/OAoIpLK/d0xYWx42JNBZiKg=","name":"backup-pi","vpn_ip":"10.8.0.7/32","privkey":"","psk":"","created_at":1792967650,"expires_at":1824503650,"quota_bytes":536870912000,"enabled":1,"notes":"Demo peer created for the live preview","telegram_chat_id":"","dns":"","allowed_ips":"0.0.0.0/0, ::/0","mtu":1420,"keepalive":25,"last_rx":464233452,"last_tx":164232652,"total_rx":106776363,"total_tx":32120410,"last_handshake":1792954324,"last_endpoint":"213.108.4.7:49726","last_ip":"213.108.4.7","last_seen":1792954324,"online":false,"country":"Russian Federation","country_code":"RU","city":"Moscow","isp":"JSC Mediasoft ekspert","disabled_reason":"","status":"offline","rx":106776363,"tx":32120410,"total":138896773,"rx_h":"101.83 MB","tx_h":"30.63 MB","total_h":"132.46 MB","quota_h":"500.00 GB","quota_pct":0.0,"days_left":364,"expires_h":"2027-10-25","created_h":"2026-10-25 22:34","last_seen_h":"3h 42m ago","handshake_h":"3h 42m ago","flag":"\ud83c\uddf7\ud83c\uddfa","has_key":true,"country_display":"Russian Federation"},{"id":"p-2e2d9abc8119","pubkey":"T01QELQsPxk+yaixEMvcBNklSGSaJPrKZQtlQLpkMYo=","name":"ipad-kids","vpn_ip":"10.8.0.6/32","privkey":"","psk":"","created_at":1792967650,"expires_at":1793572450,"quota_bytes":10737418240,"enabled":1,"notes":"Demo peer created for the live preview","telegram_chat_id":"","dns":"","allowed_ips":"0.0.0.0/0, ::/0","mtu":1420,"keepalive":25,"last_rx":135496610,"last_tx":135487810,"total_rx":118408363,"total_tx":33703812,"last_handshake":1792967595,"last_endpoint":"5.160.116.34:45305","last_ip":"5.160.116.34","last_seen":1792967595,"online":true,"country":"Iran","country_code":"IR","city":"Tehran","isp":"Respina Networks & Beyond PJSC","disabled_reason":"","status":"online","rx":118408363,"tx":33703812,"total":152112175,"rx_h":"112.92 MB","tx_h":"32.14 MB","total_h":"145.07 MB","quota_h":"10.00 GB","quota_pct":1.4,"days_left":6,"expires_h":"2026-11-01","created_h":"2026-10-25 22:34","last_seen_h":"56s ago","handshake_h":"56s ago","flag":"\ud83c\uddee\ud83c\uddf7","has_key":true,"country_display":"Iran"},{"id":"p-6eede83066c8","pubkey":"dIGy2+GVLl+QxiQWd3NqbU0CDaRUUJ31WWXGG9+YuN4=","name":"laptop-maria","vpn_ip":"10.8.0.3/32","privkey":"","psk":"","created_at":1792967650,"expires_at":1800743650,"quota_bytes":214748364800,"enabled":1,"notes":"Demo peer created for the live preview","telegram_chat_id":"","dns":"","allowed_ips":"0.0.0.0/0, ::/0","mtu":1420,"keepalive":25,"last_rx":329354312,"last_tx":29345512,"total_rx":101560284,"total_tx":33455296,"last_handshake":1792967619,"last_endpoint":"78.186.111.25:44156","last_ip":"78.186.111.25","last_seen":1792967619,"online":true,"country":"T\u00fcrkiye","country_code":"TR","city":"Ankara","isp":"Turk Telekomunikasyon Anonim Sirketi","disabled_reason":"","status":"online","rx":101560284,"tx":33455296,"total":135015580,"rx_h":"96.86 MB","tx_h":"31.91 MB","total_h":"128.76 MB","quota_h":"200.00 GB","quota_pct":0.1,"days_left":89,"expires_h":"2027-01-23","created_h":"2026-10-25 22:34","last_seen_h":"32s ago","handshake_h":"32s ago","flag":"\ud83c\uddf9\ud83c\uddf7","has_key":true,"country_display":"T\u00fcrkiye"},{"id":"p-b82ff04f2e39","pubkey":"lhlYqKGVRLMmctLBXv9olbEDLRZAj+Ozy6kAJ92Wclk=","name":"office-router","vpn_ip":"10.8.0.4/32","privkey":"","psk":"","created_at":1792967650,"expires_at":0,"quota_bytes":0,"enabled":1,"notes":"Demo peer created for the live preview","telegram_chat_id":"","dns":"","allowed_ips":"0.0.0.0/0, ::/0","mtu":1420,"keepalive":25,"last_rx":741227992,"last_tx":141223192,"total_rx":116070001,"total_tx":34113686,"last_handshake":1792895054,"last_endpoint":"78.186.111.25:58996","last_ip":"78.186.111.25","last_seen":1792895054,"online":false,"country":"T\u00fcrkiye","country_code":"TR","city":"Ankara","isp":"Turk Telekomunikasyon Anonim Sirketi","disabled_reason":"","status":"offline","rx":116070001,"tx":34113686,"total":150183687,"rx_h":"110.69 MB","tx_h":"32.53 MB","total_h":"143.23 MB","quota_h":"Unlimited","quota_pct":0,"days_left":null,"expires_h":"Never","created_h":"2026-10-25 22:34","last_seen_h":"20h 9m ago","handshake_h":"20h 9m ago","flag":"\ud83c\uddf9\ud83c\uddf7","has_key":true,"country_display":"T\u00fcrkiye"},{"id":"p-5f0faf1d009e","pubkey":"m3BIjKvVVyZUj5Byv39FniE6sHKv8GRgZAhpATnBNFQ=","name":"phone","vpn_ip":"10.8.0.2/32","privkey":"","psk":"","created_at":1792967650,"expires_at":1795559650,"quota_bytes":53687091200,"enabled":1,"notes":"Demo peer created for the live preview","telegram_chat_id":"","dns":"","allowed_ips":"0.0.0.0/0, ::/0","mtu":1420,"keepalive":25,"last_rx":722450998,"last_tx":122448198,"total_rx":117044126,"total_tx":31983349,"last_handshake":1792967576,"last_endpoint":"172.58.32.17:43499","last_ip":"172.58.32.17","last_seen":1792967576,"online":true,"country":"United States","country_code":"US","city":"Chicago","isp":"T-Mobile USA, Inc.","disabled_reason":"","status":"online","rx":117044126,"tx":31983349,"total":149027475,"rx_h":"111.62 MB","tx_h":"30.50 MB","total_h":"142.12 MB","quota_h":"50.00 GB","quota_pct":0.3,"days_left":29,"expires_h":"2026-11-24","created_h":"2026-10-25 22:34","last_seen_h":"1m ago","handshake_h":"1m ago","flag":"\ud83c\uddfa\ud83c\uddf8","has_key":true,"country_display":"United States"},{"id":"p-d9debc753877","pubkey":"dXLVOvOou6JiJc6AX6+Wl/3QBzvzvwMnK65g3hWaSvg=","name":"tablet-ali","vpn_ip":"10.8.0.5/32","privkey":"","psk":"","created_at":1792967650,"expires_at":1794177250,"quota_bytes":21474836480,"enabled":1,"notes":"Demo peer created for the live preview","telegram_chat_id":"","dns":"","allowed_ips":"0.0.0.0/0, ::/0","mtu":1420,"keepalive":25,"last_rx":350089416,"last_tx":50085616,"total_rx":109262335,"total_tx":36471698,"last_handshake":1792967617,"last_endpoint":"91.64.182.11:44208","last_ip":"91.64.182.11","last_seen":1792967617,"online":true,"country":"Germany","country_code":"DE","city":"Berlin","isp":"Vodafone GmbH","disabled_reason":"","status":"online","rx":109262335,"tx":36471698,"total":145734033,"rx_h":"104.20 MB","tx_h":"34.78 MB","total_h":"138.98 MB","quota_h":"20.00 GB","quota_pct":0.7,"days_left":13,"expires_h":"2026-11-08","created_h":"2026-10-25 22:34","last_seen_h":"34s ago","handshake_h":"34s ago","flag":"\ud83c\udde9\ud83c\uddea","has_key":true,"country_display":"Germany"}],"stats":{"total_peers":6,"online":4,"offline":2,"disabled":0,"total_rx":669121472,"total_tx":201848251,"total_traffic":870969723,"total_traffic_h":"830.62 MB","today_rx":630772108,"today_tx":190061266,"today_traffic":820833374,"today_traffic_h":"782.81 MB","countries":4},"traffic":[{"ts":1792879200,"rx":4447381,"tx":1628460,"cum_rx":2315800,"cum_tx":847574},{"ts":1792882800,"rx":27424611,"tx":8313091,"cum_rx":7963664,"cum_tx":2567357},{"ts":1792886400,"rx":29000022,"tx":8729302,"cum_rx":13237345,"cum_tx":3926724},{"ts":1792890000,"rx":33225597,"tx":9165165,"cum_rx":20069417,"cum_tx":5826270},{"ts":1792893600,"rx":38686099,"tx":10880767,"cum_rx":26572309,"cum_tx":7668829},{"ts":1792897200,"rx":39306302,"tx":10648146,"cum_rx":34906630,"cum_tx":9521040},{"ts":1792900800,"rx":37681028,"tx":11471948,"cum_rx":42396808,"cum_tx":11979545},{"ts":1792904400,"rx":33076592,"tx":12987576,"cum_rx":48956068,"cum_tx":14138173},{"ts":1792908000,"rx":37573468,"tx":13343100,"cum_rx":54785665,"cum_tx":16564054},{"ts":1792911600,"rx":45067455,"tx":12415273,"cum_rx":64487607,"cum_tx":18799177},{"ts":1792915200,"rx":33566643,"tx":11036153,"cum_rx":68905696,"cum_tx":20450012},{"ts":1792918800,"rx":35829952,"tx":11045609,"cum_rx":75639307,"cum_tx":21756960},{"ts":1792922400,"rx":24513275,"tx":9992721,"cum_rx":79507407,"cum_tx":23805114},{"ts":1792926000,"rx":32073096,"tx":8168421,"cum_rx":85055403,"cum_tx":25466978},{"ts":1792929600,"rx":26094748,"tx":8390683,"cum_rx":89041594,"cum_tx":26769026},{"ts":1792933200,"rx":27366714,"tx":6519453,"cum_rx":94674193,"cum_tx":27973184},{"ts":1792936800,"rx":22800022,"tx":6022663,"cum_rx":98399036,"cum_tx":29263060},{"ts":1792940400,"rx":20090349,"tx":5860654,"cum_rx":100470943,"cum_tx":30417355},{"ts":1792944000,"rx":17590163,"tx":4800214,"cum_rx":102058761,"cum_tx":31485807},{"ts":1792947600,"rx":16986452,"tx":4123057,"cum_rx":104908383,"cum_tx":32447412},{"ts":1792951200,"rx":17885930,"tx":4132484,"cum_rx":107732989,"cum_tx":33169267},{"ts":1792954800,"rx":13654461,"tx":5216544,"cum_rx":110350993,"cum_tx":34012201},{"ts":1792958400,"rx":20297953,"tx":6500185,"cum_rx":113410839,"cum_tx":34990219},{"ts":1792962000,"rx":18879981,"tx":5455191,"cum_rx":116253680,"cum_tx":35937947},{"ts":1792965600,"rx":9525806,"tx":3155957,"cum_rx":118408363,"cum_tx":36471698}],"events":[{"id":11,"ts":1792967650,"type":"info","peer_id":"","peer_name":"","message":"Demo environment initialized","detail":"{\"peers\": 6}"},{"id":10,"ts":1792967650,"type":"connect","peer_id":"p-d9debc753877","peer_name":"tablet-ali","message":"tablet-ali connected from Germany 91.64.182.11","detail":"{\"ip\": \"91.64.182.11\", \"country\": \"Germany\"}"},{"id":9,"ts":1792967650,"type":"connect","peer_id":"p-5f0faf1d009e","peer_name":"phone","message":"phone connected from United States 172.58.32.17","detail":"{\"ip\": \"172.58.32.17\", \"country\": \"United States\"}"},{"id":8,"ts":1792967650,"type":"connect","peer_id":"p-6eede83066c8","peer_name":"laptop-maria","message":"laptop-maria connected from T\u00fcrkiye 78.186.111.25","detail":"{\"ip\": \"78.186.111.25\", \"country\": \"T\\u00fcrkiye\"}"},{"id":7,"ts":1792967650,"type":"connect","peer_id":"p-2e2d9abc8119","peer_name":"ipad-kids","message":"ipad-kids connected from Iran 5.160.116.34","detail":"{\"ip\": \"5.160.116.34\", \"country\": \"Iran\"}"},{"id":6,"ts":1792967650,"type":"peer_added","peer_id":"p-3fe9be997e9b","peer_name":"backup-pi","message":"Peer 'backup-pi' created (10.8.0.7/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":5,"ts":1792967650,"type":"peer_added","peer_id":"p-2e2d9abc8119","peer_name":"ipad-kids","message":"Peer 'ipad-kids' created (10.8.0.6/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":4,"ts":1792967650,"type":"peer_added","peer_id":"p-d9debc753877","peer_name":"tablet-ali","message":"Peer 'tablet-ali' created (10.8.0.5/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":3,"ts":1792967650,"type":"peer_added","peer_id":"p-b82ff04f2e39","peer_name":"office-router","message":"Peer 'office-router' created (10.8.0.4/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":2,"ts":1792967650,"type":"peer_added","peer_id":"p-6eede83066c8","peer_name":"laptop-maria","message":"Peer 'laptop-maria' created (10.8.0.3/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":1,"ts":1792967650,"type":"peer_added","peer_id":"p-5f0faf1d009e","peer_name":"phone","message":"Peer 'phone' created (10.8.0.2/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"}],"settings":{"online_timeout":180,"sample_interval":30,"history_days":90,"default_allowed_ips":"0.0.0.0/0, ::/0","default_dns":"1.1.1.1, 8.8.8.8","default_mtu":1420,"default_keepalive":25,"default_expiry_days":0,"default_quota_gb":0,"default_full_tunnel":true,"use_psk":true,"enforce_quota":true,"enforce_expiry":true,"telegram_token":"","telegram_admins":[],"notify_connect":true,"notify_disconnect":true,"notify_quota":true,"notify_expiry":true,"notify_peer_changes":true,"notify_daily":false,"daily_report_time":"09:00","geoip_provider":"auto","geoip_token":"","endpoint":"","theme":"midnight","auto_backup":true,"share_link_hours":24,"require_2fa":false},"bot":{"enabled":false,"running":false},"backups":[{"name":"wg0-20261025-223410-auto.conf","size":1351,"created_at":1792967650,"reason":"auto"}],"audit":[{"id":7,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"backup-pi / 10.8.0.7/32","ip":""},{"id":6,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"ipad-kids / 10.8.0.6/32","ip":""},{"id":5,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"tablet-ali / 10.8.0.5/32","ip":""},{"id":4,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"office-router / 10.8.0.4/32","ip":""},{"id":3,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"laptop-maria / 10.8.0.3/32","ip":""},{"id":2,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"phone / 10.8.0.2/32","ip":""},{"id":1,"ts":1792967650,"actor":"system","action":"install","detail":"Dashboard initialized","ip":""}],"network":"10.8.0.0/24","endpoint":"vpn.example.com:54240","services_running":{"monitor":false,"telegram":false}},"traffic":{"series":[{"ts":1792879200,"rx":4447381,"tx":1628460,"cum_rx":2315800,"cum_tx":847574},{"ts":1792882800,"rx":27424611,"tx":8313091,"cum_rx":7963664,"cum_tx":2567357},{"ts":1792886400,"rx":29000022,"tx":8729302,"cum_rx":13237345,"cum_tx":3926724},{"ts":1792890000,"rx":33225597,"tx":9165165,"cum_rx":20069417,"cum_tx":5826270},{"ts":1792893600,"rx":38686099,"tx":10880767,"cum_rx":26572309,"cum_tx":7668829},{"ts":1792897200,"rx":39306302,"tx":10648146,"cum_rx":34906630,"cum_tx":9521040},{"ts":1792900800,"rx":37681028,"tx":11471948,"cum_rx":42396808,"cum_tx":11979545},{"ts":1792904400,"rx":33076592,"tx":12987576,"cum_rx":48956068,"cum_tx":14138173},{"ts":1792908000,"rx":37573468,"tx":13343100,"cum_rx":54785665,"cum_tx":16564054},{"ts":1792911600,"rx":45067455,"tx":12415273,"cum_rx":64487607,"cum_tx":18799177},{"ts":1792915200,"rx":33566643,"tx":11036153,"cum_rx":68905696,"cum_tx":20450012},{"ts":1792918800,"rx":35829952,"tx":11045609,"cum_rx":75639307,"cum_tx":21756960},{"ts":1792922400,"rx":24513275,"tx":9992721,"cum_rx":79507407,"cum_tx":23805114},{"ts":1792926000,"rx":32073096,"tx":8168421,"cum_rx":85055403,"cum_tx":25466978},{"ts":1792929600,"rx":26094748,"tx":8390683,"cum_rx":89041594,"cum_tx":26769026},{"ts":1792933200,"rx":27366714,"tx":6519453,"cum_rx":94674193,"cum_tx":27973184},{"ts":1792936800,"rx":22800022,"tx":6022663,"cum_rx":98399036,"cum_tx":29263060},{"ts":1792940400,"rx":20090349,"tx":5860654,"cum_rx":100470943,"cum_tx":30417355},{"ts":1792944000,"rx":17590163,"tx":4800214,"cum_rx":102058761,"cum_tx":31485807},{"ts":1792947600,"rx":16986452,"tx":4123057,"cum_rx":104908383,"cum_tx":32447412},{"ts":1792951200,"rx":17885930,"tx":4132484,"cum_rx":107732989,"cum_tx":33169267},{"ts":1792954800,"rx":13654461,"tx":5216544,"cum_rx":110350993,"cum_tx":34012201},{"ts":1792958400,"rx":20297953,"tx":6500185,"cum_rx":113410839,"cum_tx":34990219},{"ts":1792962000,"rx":18879981,"tx":5455191,"cum_rx":116253680,"cum_tx":35937947},{"ts":1792965600,"rx":9525806,"tx":3155957,"cum_rx":118408363,"cum_tx":36471698}]},"server":{"info":{"interface":"wg0","active":true,"listen_port":54240,"address":"10.8.0.1/24","public_key":"Qr3iTSCVeKh4Cd+RWjUX/Bvrg3yo+RoXK6cxEa+CYmw=","endpoint":"vpn.example.com:54240","config_path":"/home/user/wireguard-dashboard/demo-data/wg0.conf","dns":"","mtu":0,"postup":"iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE","postdown":"iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE","network":"10.8.0.0/24","hostname":"e2b.local","services":{"AdGuard Home":"inactive","Caddy":"inactive","WireGuard":"inactive"}},"interface":{"private_key":"21mk8YXsILWF9yzgidNxUDa/PpHwnKe8wdUPUz+rED0=","address":"10.8.0.1/24","listen_port":54240,"dns":"","mtu":0,"table":"","saveconfig":"false","postup":"iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE","postdown":"iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE","preup":"","predown":""},"config":"[Interface]\nPrivateKey = \u003credacted-in-preview>\nAddress = 10.8.0.1/24\nListenPort = 54240\nSaveConfig = false\nPostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE\nPostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE\n\n[Peer]\n# wgdash-id: p-3fe9be997e9b\n# wgdash-name: backup-pi\nPublicKey = UA+kbN5zBME1cPkQ8+v/OAoIpLK/d0xYWx42JNBZiKg=\nPresharedKey = T8KLqIFxaDlb2HpdW4gM30tICxucyT4rRwTBRnEo2zw=\nAllowedIPs = 10.8.0.7/32\n\n[Peer]\n# wgdash-id: p-2e2d9abc8119\n# wgdash-name: ipad-kids\nPublicKey = T01QELQsPxk+yaixEMvcBNklSGSaJPrKZQtlQLpkMYo=\nPresharedKey = Excddmm2vI6KXv4fn1YatucNLS/ldGsjSHav26U++5U=\nAllowedIPs = 10.8.0.6/32\n\n[Peer]\n# wgdash-id: p-6eede83066c8\n# wgdash-name: laptop-maria\nPublicKey = dIGy2+GVLl+QxiQWd3NqbU0CDaRUUJ31WWXGG9+YuN4=\nPresharedKey = 9D03jnl85ZrYsXkL+TbMcTMXZ8tTB/kfcr8Tu2xn7ek=\nAllowedIPs = 10.8.0.3/32\n\n[Peer]\n# wgdash-id: p-b82ff04f2e39\n# wgdash-name: office-router\nPublicKey = lhlYqKGVRLMmctLBXv9olbEDLRZAj+Ozy6kAJ92Wclk=\nPresharedKey = EmJMjA90IJL5OXin0/iEotppLYrt1pgswVv1HsA2BKU=\nAllowedIPs = 10.8.0.4/32\n\n[Peer]\n# wgdash-id: p-5f0faf1d009e\n# wgdash-name: phone\nPublicKey = m3BIjKvVVyZUj5Byv39FniE6sHKv8GRgZAhpATnBNFQ=\nPresharedKey = ysAyzTg3dZTjDaeZ+ieCgsKqbxDisd5wOaA2wqx27To=\nAllowedIPs = 10.8.0.2/32\n\n[Peer]\n# wgdash-id: p-d9debc753877\n# wgdash-name: tablet-ali\nPublicKey = dXLVOvOou6JiJc6AX6+Wl/3QBzvzvwMnK65g3hWaSvg=\nPresharedKey = bntZCFAePGB3vslkmJ4cS8BZWYHgferHEnbFnKsC0+o=\nAllowedIPs = 10.8.0.5/32\n","backups":[{"name":"wg0-20261025-223410-auto.conf","size":1351,"created_at":1792967650,"reason":"auto"}]},"settings":{"settings":{"online_timeout":180,"sample_interval":30,"history_days":90,"default_allowed_ips":"0.0.0.0/0, ::/0","default_dns":"1.1.1.1, 8.8.8.8","default_mtu":1420,"default_keepalive":25,"default_expiry_days":0,"default_quota_gb":0,"default_full_tunnel":true,"use_psk":true,"enforce_quota":true,"enforce_expiry":true,"telegram_token":"","telegram_admins":[],"notify_connect":true,"notify_disconnect":true,"notify_quota":true,"notify_expiry":true,"notify_peer_changes":true,"notify_daily":false,"daily_report_time":"09:00","geoip_provider":"auto","geoip_token":"","endpoint":"","theme":"midnight","auto_backup":true,"share_link_hours":24,"require_2fa":false},"admins":[{"id":1,"username":"admin","has_2fa":0,"created_at":1792967650,"last_login":0}],"tokens":[],"shares":[]},"events":{"events":[{"id":11,"ts":1792967650,"type":"info","peer_id":"","peer_name":"","message":"Demo environment initialized","detail":"{\"peers\": 6}"},{"id":10,"ts":1792967650,"type":"connect","peer_id":"p-d9debc753877","peer_name":"tablet-ali","message":"tablet-ali connected from Germany 91.64.182.11","detail":"{\"ip\": \"91.64.182.11\", \"country\": \"Germany\"}"},{"id":9,"ts":1792967650,"type":"connect","peer_id":"p-5f0faf1d009e","peer_name":"phone","message":"phone connected from United States 172.58.32.17","detail":"{\"ip\": \"172.58.32.17\", \"country\": \"United States\"}"},{"id":8,"ts":1792967650,"type":"connect","peer_id":"p-6eede83066c8","peer_name":"laptop-maria","message":"laptop-maria connected from T\u00fcrkiye 78.186.111.25","detail":"{\"ip\": \"78.186.111.25\", \"country\": \"T\\u00fcrkiye\"}"},{"id":7,"ts":1792967650,"type":"connect","peer_id":"p-2e2d9abc8119","peer_name":"ipad-kids","message":"ipad-kids connected from Iran 5.160.116.34","detail":"{\"ip\": \"5.160.116.34\", \"country\": \"Iran\"}"},{"id":6,"ts":1792967650,"type":"peer_added","peer_id":"p-3fe9be997e9b","peer_name":"backup-pi","message":"Peer 'backup-pi' created (10.8.0.7/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":5,"ts":1792967650,"type":"peer_added","peer_id":"p-2e2d9abc8119","peer_name":"ipad-kids","message":"Peer 'ipad-kids' created (10.8.0.6/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":4,"ts":1792967650,"type":"peer_added","peer_id":"p-d9debc753877","peer_name":"tablet-ali","message":"Peer 'tablet-ali' created (10.8.0.5/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":3,"ts":1792967650,"type":"peer_added","peer_id":"p-b82ff04f2e39","peer_name":"office-router","message":"Peer 'office-router' created (10.8.0.4/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":2,"ts":1792967650,"type":"peer_added","peer_id":"p-6eede83066c8","peer_name":"laptop-maria","message":"Peer 'laptop-maria' created (10.8.0.3/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"},{"id":1,"ts":1792967650,"type":"peer_added","peer_id":"p-5f0faf1d009e","peer_name":"phone","message":"Peer 'phone' created (10.8.0.2/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"}]},"audit":{"audit":[{"id":7,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"backup-pi / 10.8.0.7/32","ip":""},{"id":6,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"ipad-kids / 10.8.0.6/32","ip":""},{"id":5,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"tablet-ali / 10.8.0.5/32","ip":""},{"id":4,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"office-router / 10.8.0.4/32","ip":""},{"id":3,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"laptop-maria / 10.8.0.3/32","ip":""},{"id":2,"ts":1792967650,"actor":"demo","action":"peer.add","detail":"phone / 10.8.0.2/32","ip":""},{"id":1,"ts":1792967650,"actor":"system","action":"install","detail":"Dashboard initialized","ip":""}]},"details":{"peer":{"id":"p-3fe9be997e9b","pubkey":"UA+kbN5zBME1cPkQ8+v/OAoIpLK/d0xYWx42JNBZiKg=","name":"backup-pi","vpn_ip":"10.8.0.7/32","privkey":"","psk":"","created_at":1792967650,"expires_at":1824503650,"quota_bytes":536870912000,"enabled":1,"notes":"Demo peer created for the live preview","telegram_chat_id":"","dns":"","allowed_ips":"0.0.0.0/0, ::/0","mtu":1420,"keepalive":25,"last_rx":464233452,"last_tx":164232652,"total_rx":106776363,"total_tx":32120410,"last_handshake":1792954324,"last_endpoint":"213.108.4.7:49726","last_ip":"213.108.4.7","last_seen":1792954324,"online":false,"country":"Russian Federation","country_code":"RU","city":"Moscow","isp":"JSC Mediasoft ekspert","disabled_reason":"","status":"offline","rx":106776363,"tx":32120410,"total":138896773,"rx_h":"101.83 MB","tx_h":"30.63 MB","total_h":"132.46 MB","quota_h":"500.00 GB","quota_pct":0.0,"days_left":364,"expires_h":"2027-10-25","created_h":"2026-10-25 22:34","last_seen_h":"3h 42m ago","handshake_h":"3h 42m ago","flag":"\ud83c\uddf7\ud83c\uddfa","has_key":true,"country_display":"Russian Federation"},"events":[{"id":6,"ts":1792967650,"type":"peer_added","peer_id":"p-3fe9be997e9b","peer_name":"backup-pi","message":"Peer 'backup-pi' created (10.8.0.7/32)","detail":"{\"endpoint\": \"vpn.example.com:54240\"}"}],"samples":[{"id":1,"ts":1792881250,"peer_id":"p-3fe9be997e9b","rx":158496,"tx":313442,"total_rx":158496,"total_tx":313442,"online":1},{"id":2,"ts":1792882150,"peer_id":"p-3fe9be997e9b","rx":1113042,"tx":181869,"total_rx":1271538,"total_tx":495311,"online":1},{"id":3,"ts":1792883050,"peer_id":"p-3fe9be997e9b","rx":1145616,"tx":351524,"total_rx":2417154,"total_tx":846835,"online":0},{"id":4,"ts":1792883950,"peer_id":"p-3fe9be997e9b","rx":1000132,"tx":181003,"total_rx":3417286,"total_tx":1027838,"online":1},{"id":5,"ts":1792884850,"peer_id":"p-3fe9be997e9b","rx":888389,"tx":422198,"total_rx":4305675,"total_tx":1450036,"online":1},{"id":6,"ts":1792885750,"peer_id":"p-3fe9be997e9b","rx":1733067,"tx":172885,"total_rx":6038742,"total_tx":1622921,"online":1},{"id":7,"ts":1792886650,"peer_id":"p-3fe9be997e9b","rx":244374,"tx":232331,"total_rx":6283116,"total_tx":1855252,"online":1},{"id":8,"ts":1792887550,"peer_id":"p-3fe9be997e9b","rx":802833,"tx":335106,"total_rx":7085949,"total_tx":2190358,"online":1},{"id":9,"ts":1792888450,"peer_id":"p-3fe9be997e9b","rx":1082966,"tx":451079,"total_rx":8168915,"total_tx":2641437,"online":1},{"id":10,"ts":1792889350,"peer_id":"p-3fe9be997e9b","rx":2066803,"tx":484965,"total_rx":10235718,"total_tx":3126402,"online":1},{"id":11,"ts":1792890250,"peer_id":"p-3fe9be997e9b","rx":274490,"tx":635207,"total_rx":10510208,"total_tx":3761609,"online":0},{"id":12,"ts":1792891150,"peer_id":"p-3fe9be997e9b","rx":1305532,"tx":527950,"total_rx":11815740,"total_tx":4289559,"online":1},{"id":13,"ts":1792892050,"peer_id":"p-3fe9be997e9b","rx":1681270,"tx":325207,"total_rx":13497010,"total_tx":4614766,"online":0},{"id":14,"ts":1792892950,"peer_id":"p-3fe9be997e9b","rx":1917902,"tx":75133,"total_rx":15414912,"total_tx":4689899,"online":0},{"id":15,"ts":1792893850,"peer_id":"p-3fe9be997e9b","rx":1498340,"tx":578375,"total_rx":16913252,"total_tx":5268274,"online":1},{"id":16,"ts":1792894750,"peer_id":"p-3fe9be997e9b","rx":1791117,"tx":585239,"total_rx":18704369,"total_tx":5853513,"online":1},{"id":17,"ts":1792895650,"peer_id":"p-3fe9be997e9b","rx":2138781,"tx":636144,"total_rx":20843150,"total_tx":6489657,"online":1},{"id":18,"ts":1792896550,"peer_id":"p-3fe9be997e9b","rx":392144,"tx":562592,"total_rx":21235294,"total_tx":7052249,"online":0},{"id":19,"ts":1792897450,"peer_id":"p-3fe9be997e9b","rx":982980,"tx":97074,"total_rx":22218274,"total_tx":7149323,"online":0},{"id":20,"ts":1792898350,"peer_id":"p-3fe9be997e9b","rx":400708,"tx":255147,"total_rx":22618982,"total_tx":7404470,"online":0},{"id":21,"ts":1792899250,"peer_id":"p-3fe9be997e9b","rx":302297,"tx":334223,"total_rx":22921279,"total_tx":7738693,"online":0},{"id":22,"ts":1792900150,"peer_id":"p-3fe9be997e9b","rx":869019,"tx":102471,"total_rx":23790298,"total_tx":7841164,"online":1},{"id":23,"ts":1792901050,"peer_id":"p-3fe9be997e9b","rx":1567420,"tx":603254,"total_rx":25357718,"total_tx":8444418,"online":1},{"id":24,"ts":1792901950,"peer_id":"p-3fe9be997e9b","rx":1988421,"tx":515311,"total_rx":27346139,"total_tx":8959729,"online":0},{"id":25,"ts":1792902850,"peer_id":"p-3fe9be997e9b","rx":847369,"tx":252423,"total_rx":28193508,"total_tx":9212152,"online":0},{"id":26,"ts":1792903750,"peer_id":"p-3fe9be997e9b","rx":1447120,"tx":81263,"total_rx":29640628,"total_tx":9293415,"online":0},{"id":27,"ts":1792904650,"peer_id":"p-3fe9be997e9b","rx":2053931,"tx":502354,"total_rx":31694559,"total_tx":9795769,"online":1},{"id":28,"ts":1792905550,"peer_id":"p-3fe9be997e9b","rx":767061,"tx":625601,"total_rx":32461620,"total_tx":10421370,"online":0},{"id":29,"ts":1792906450,"peer_id":"p-3fe9be997e9b","rx":534327,"tx":162022,"total_rx":32995947,"total_tx":10583392,"online":0},{"id":30,"ts":1792907350,"peer_id":"p-3fe9be997e9b","rx":2015131,"tx":398343,"total_rx":35011078,"total_tx":10981735,"online":0},{"id":31,"ts":1792908250,"peer_id":"p-3fe9be997e9b","rx":2265169,"tx":371152,"total_rx":37276247,"total_tx":11352887,"online":1},{"id":32,"ts":1792909150,"peer_id":"p-3fe9be997e9b","rx":1626552,"tx":377507,"total_rx":38902799,"total_tx":11730394,"online":0},{"id":33,"ts":1792910050,"peer_id":"p-3fe9be997e9b","rx":586266,"tx":485195,"total_rx":39489065,"total_tx":12215589,"online":0},{"id":34,"ts":1792910950,"peer_id":"p-3fe9be997e9b","rx":2845055,"tx":886313,"total_rx":42334120,"total_tx":13101902,"online":1},{"id":35,"ts":1792911850,"peer_id":"p-3fe9be997e9b","rx":2313690,"tx":366716,"total_rx":44647810,"total_tx":13468618,"online":1},{"id":36,"ts":1792912750,"peer_id":"p-3fe9be997e9b","rx":1717983,"tx":396980,"total_rx":46365793,"total_tx":13865598,"online":1},{"id":37,"ts":1792913650,"peer_id":"p-3fe9be997e9b","rx":1109781,"tx":619522,"total_rx":47475574,"total_tx":14485120,"online":0},{"id":38,"ts":1792914550,"peer_id":"p-3fe9be997e9b","rx":2858920,"tx":522310,"total_rx":50334494,"total_tx":15007430,"online":0},{"id":39,"ts":1792915450,"peer_id":"p-3fe9be997e9b","rx":2118364,"tx":621261,"total_rx":52452858,"total_tx":15628691,"online":0},{"id":40,"ts":1792916350,"peer_id":"p-3fe9be997e9b","rx":314080,"tx":398749,"total_rx":52766938,"total_tx":16027440,"online":1},{"id":41,"ts":1792917250,"peer_id":"p-3fe9be997e9b","rx":2670227,"tx":686217,"total_rx":55437165,"total_tx":16713657,"online":0},{"id":42,"ts":1792918150,"peer_id":"p-3fe9be997e9b","rx":677543,"tx":178826,"total_rx":56114708,"total_tx":16892483,"online":0},{"id":43,"ts":1792919050,"peer_id":"p-3fe9be997e9b","rx":605129,"tx":730986,"total_rx":56719837,"total_tx":17623469,"online":0},{"id":44,"ts":1792919950,"peer_id":"p-3fe9be997e9b","rx":2444204,"tx":712712,"total_rx":59164041,"total_tx":18336181,"online":1},{"id":45,"ts":1792920850,"peer_id":"p-3fe9be997e9b","rx":1707375,"tx":321663,"total_rx":60871416,"total_tx":18657844,"online":1},{"id":46,"ts":1792921750,"peer_id":"p-3fe9be997e9b","rx":1333584,"tx":623686,"total_rx":62205000,"total_tx":19281530,"online":1},{"id":47,"ts":1792922650,"peer_id":"p-3fe9be997e9b","rx":339962,"tx":661197,"total_rx":62544962,"total_tx":19942727,"online":0},{"id":48,"ts":1792923550,"peer_id":"p-3fe9be997e9b","rx":1840007,"tx":530084,"total_rx":64384969,"total_tx":20472811,"online":1},{"id":49,"ts":1792924450,"peer_id":"p-3fe9be997e9b","rx":1872777,"tx":453278,"total_rx":66257746,"total_tx":20926089,"online":1},{"id":50,"ts":1792925350,"peer_id":"p-3fe9be997e9b","rx":197243,"tx":160184,"total_rx":66454989,"total_tx":21086273,"online":0},{"id":51,"ts":1792926250,"peer_id":"p-3fe9be997e9b","rx":2113211,"tx":525142,"total_rx":68568200,"total_tx":21611415,"online":1},{"id":52,"ts":1792927150,"peer_id":"p-3fe9be997e9b","rx":1251930,"tx":198239,"total_rx":69820130,"total_tx":21809654,"online":0},{"id":53,"ts":1792928050,"peer_id":"p-3fe9be997e9b","rx":1579363,"tx":97723,"total_rx":71399493,"total_tx":21907377,"online":0},{"id":54,"ts":1792928950,"peer_id":"p-3fe9be997e9b","rx":1810957,"tx":337191,"total_rx":73210450,"total_tx":22244568,"online":1},{"id":55,"ts":1792929850,"peer_id":"p-3fe9be997e9b","rx":355029,"tx":501385,"total_rx":73565479,"total_tx":22745953,"online":0},{"id":56,"ts":1792930750,"peer_id":"p-3fe9be997e9b","rx":986508,"tx":163741,"total_rx":74551987,"total_tx":22909694,"online":0},{"id":57,"ts":1792931650,"peer_id":"p-3fe9be997e9b","rx":1452047,"tx":523361,"total_rx":76004034,"total_tx":23433055,"online":0},{"id":58,"ts":1792932550,"peer_id":"p-3fe9be997e9b","rx":1356062,"tx":296216,"total_rx":77360096,"total_tx":23729271,"online":1},{"id":59,"ts":1792933450,"peer_id":"p-3fe9be997e9b","rx":1632045,"tx":173989,"total_rx":78992141,"total_tx":23903260,"online":0},{"id":60,"ts":1792934350,"peer_id":"p-3fe9be997e9b","rx":1616905,"tx":510703,"total_rx":80609046,"total_tx":24413963,"online":1},{"id":61,"ts":1792935250,"peer_id":"p-3fe9be997e9b","rx":426045,"tx":130644,"total_rx":81035091,"total_tx":24544607,"online":1},{"id":62,"ts":1792936150,"peer_id":"p-3fe9be997e9b","rx":1065537,"tx":162648,"total_rx":82100628,"total_tx":24707255,"online":1},{"id":63,"ts":1792937050,"peer_id":"p-3fe9be997e9b","rx":616687,"tx":341930,"total_rx":82717315,"total_tx":25049185,"online":1},{"id":64,"ts":1792937950,"peer_id":"p-3fe9be997e9b","rx":727749,"tx":313495,"total_rx":83445064,"total_tx":25362680,"online":0},{"id":65,"ts":1792938850,"peer_id":"p-3fe9be997e9b","rx":1135270,"tx":169343,"total_rx":84580334,"total_tx":25532023,"online":0},{"id":66,"ts":1792939750,"peer_id":"p-3fe9be997e9b","rx":1152288,"tx":216278,"total_rx":85732622,"total_tx":25748301,"online":0},{"id":67,"ts":1792940650,"peer_id":"p-3fe9be997e9b","rx":614360,"tx":91112,"total_rx":86346982,"total_tx":25839413,"online":0},{"id":68,"ts":1792941550,"peer_id":"p-3fe9be997e9b","rx":1014163,"tx":354456,"total_rx":87361145,"total_tx":26193869,"online":0},{"id":69,"ts":1792942450,"peer_id":"p-3fe9be997e9b","rx":695713,"tx":202227,"total_rx":88056858,"total_tx":26396096,"online":1},{"id":70,"ts":1792943350,"peer_id":"p-3fe9be997e9b","rx":935416,"tx":83332,"total_rx":88992274,"total_tx":26479428,"online":1},{"id":71,"ts":1792944250,"peer_id":"p-3fe9be997e9b","rx":374580,"tx":53415,"total_rx":89366854,"total_tx":26532843,"online":0},{"id":72,"ts":1792945150,"peer_id":"p-3fe9be997e9b","rx":1251590,"tx":167098,"total_rx":90618444,"total_tx":26699941,"online":1},{"id":73,"ts":1792946050,"peer_id":"p-3fe9be997e9b","rx":1242380,"tx":349225,"total_rx":91860824,"total_tx":27049166,"online":1},{"id":74,"ts":1792946950,"peer_id":"p-3fe9be997e9b","rx":582413,"tx":108380,"total_rx":92443237,"total_tx":27157546,"online":0},{"id":75,"ts":1792947850,"peer_id":"p-3fe9be997e9b","rx":220830,"tx":303713,"total_rx":92664067,"total_tx":27461259,"online":1},{"id":76,"ts":1792948750,"peer_id":"p-3fe9be997e9b","rx":675551,"tx":34082,"total_rx":93339618,"total_tx":27495341,"online":1},{"id":77,"ts":1792949650,"peer_id":"p-3fe9be997e9b","rx":1044863,"tx":59595,"total_rx":94384481,"total_tx":27554936,"online":0},{"id":78,"ts":1792950550,"peer_id":"p-3fe9be997e9b","rx":789110,"tx":213870,"total_rx":95173591,"total_tx":27768806,"online":1},{"id":79,"ts":1792951450,"peer_id":"p-3fe9be997e9b","rx":623762,"tx":325186,"total_rx":95797353,"total_tx":28093992,"online":0},{"id":80,"ts":1792952350,"peer_id":"p-3fe9be997e9b","rx":590492,"tx":208560,"total_rx":96387845,"total_tx":28302552,"online":0},{"id":81,"ts":1792953250,"peer_id":"p-3fe9be997e9b","rx":602716,"tx":234004,"total_rx":96990561,"total_tx":28536556,"online":1},{"id":82,"ts":1792954150,"peer_id":"p-3fe9be997e9b","rx":855557,"tx":223224,"total_rx":97846118,"total_tx":28759780,"online":0},{"id":83,"ts":1792955050,"peer_id":"p-3fe9be997e9b","rx":387481,"tx":42936,"total_rx":98233599,"total_tx":28802716,"online":0},{"id":84,"ts":1792955950,"peer_id":"p-3fe9be997e9b","rx":96204,"tx":292251,"total_rx":98329803,"total_tx":29094967,"online":0},{"id":85,"ts":1792956850,"peer_id":"p-3fe9be997e9b","rx":802251,"tx":45242,"total_rx":99132054,"total_tx":29140209,"online":1},{"id":86,"ts":1792957750,"peer_id":"p-3fe9be997e9b","rx":109339,"tx":166317,"total_rx":99241393,"total_tx":29306526,"online":0},{"id":87,"ts":1792958650,"peer_id":"p-3fe9be997e9b","rx":1043481,"tx":377769,"total_rx":100284874,"total_tx":29684295,"online":1},{"id":88,"ts":1792959550,"peer_id":"p-3fe9be997e9b","rx":641103,"tx":388827,"total_rx":100925977,"total_tx":30073122,"online":0},{"id":89,"ts":1792960450,"peer_id":"p-3fe9be997e9b","rx":515574,"tx":323124,"total_rx":101441551,"total_tx":30396246,"online":1},{"id":90,"ts":1792961350,"peer_id":"p-3fe9be997e9b","rx":1387361,"tx":349698,"total_rx":102828912,"total_tx":30745944,"online":0},{"id":91,"ts":1792962250,"peer_id":"p-3fe9be997e9b","rx":711610,"tx":82425,"total_rx":103540522,"total_tx":30828369,"online":1},{"id":92,"ts":1792963150,"peer_id":"p-3fe9be997e9b","rx":470247,"tx":106053,"total_rx":104010769,"total_tx":30934422,"online":0},{"id":93,"ts":1792964050,"peer_id":"p-3fe9be997e9b","rx":670069,"tx":74702,"total_rx":104680838,"total_tx":31009124,"online":0},{"id":94,"ts":1792964950,"peer_id":"p-3fe9be997e9b","rx":994465,"tx":359596,"total_rx":105675303,"total_tx":31368720,"online":1},{"id":95,"ts":1792965850,"peer_id":"p-3fe9be997e9b","rx":141896,"tx":409276,"total_rx":105817199,"total_tx":31777996,"online":0},{"id":96,"ts":1792966750,"peer_id":"p-3fe9be997e9b","rx":959164,"tx":342414,"total_rx":106776363,"total_tx":32120410,"online":0},{"id":577,"ts":1792967650,"peer_id":"p-3fe9be997e9b","rx":0,"tx":0,"total_rx":106776363,"total_tx":32120410,"online":0}],"shares":[]},"conf":{"ok":true,"conf":"# WireGuard client: backup-pi\n# Generated by WireGuard Dashboard on 2026-10-25 22:34:11 UTC\n# Dashboard: (local)\n\n[Interface]\nPrivateKey = Br0ENy5a5JwHpbbqjPk7I/SFEjXf9qkybdcbjYubi40=\nAddress = 10.8.0.7/32\nDNS = 1.1.1.1, 8.8.8.8\nMTU = 1420\n\n[Peer]\nPublicKey = Qr3iTSCVeKh4Cd+RWjUX/Bvrg3yo+RoXK6cxEa+CYmw=\nEndpoint = vpn.example.com:54240\nAllowedIPs = 0.0.0.0/0, ::/0\nPresharedKey = T8KLqIFxaDlb2HpdW4gM30tICxucyT4rRwTBRnEo2zw=\nPersistentKeepalive = 25\n"}};
+window.fetch = async function (url, opts) {
+  var f = window.__WGDASH_FIXTURES__, data = {ok: true}, raw = null, u = String(url);
+  if (u.indexOf('/api/state') === 0) data = f.state;
+  else if (u.indexOf('/api/traffic') === 0) data = f.traffic;
+  else if (u.indexOf('/api/server') === 0) data = f.server;
+  else if (u.indexOf('/api/settings') === 0) data = f.settings;
+  else if (u.indexOf('/api/events') === 0) data = f.events;
+  else if (u.indexOf('/api/audit') === 0) data = f.audit;
+  else if (/\/api\/peers\/[^/]+\/details/.test(u)) data = f.details;
+  else if (/\/conf$/.test(u)) data = f.conf;
+  else if (/\/api\/peers\/[^/]+\/share/.test(u)) data = {ok: true, share: {path: '/s/preview', url: ''}};
+  else if (u.indexOf('qr.svg') !== -1) raw = '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect width="180" height="180" fill="#fff"/><path d="M20 20h50v50H20zm90 0h50v50h-50zM20 110h50v50H20z" fill="#0f172a"/></svg>';
+  return {status: 200, ok: true, text: async function () { return raw !== null ? raw : JSON.stringify(data); }};
+};
+window.prompt = function () { return null; };
+if (!navigator.clipboard) navigator.clipboard = {writeText: async function () {}};
+</script>
+<script>
+/* WireGuard Dashboard — vanilla JS front end (no CDN, no build step) */
+'use strict';
+
+const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => Array.from(root.querySelectorAll(s));
+const ICON = (id, cls = '') => `<svg class="icon ${cls}"><use href="#i-${id}"/></svg>`;
+const state = {
+  data: null, view: 'overview', filter: 'all', search: '',
+  chartHours: 24, chartSeries: null, forms: {}, lastRefresh: 0,
+};
+
+/* ------------------------------- helpers ------------------------------- */
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function bytes(n) {
+  n = Number(n || 0);
+  if (n < 1024) return n + ' B';
+  const u = ['KB', 'MB', 'GB', 'TB', 'PB'];
+  let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+  return n.toFixed(n >= 100 ? 0 : n >= 10 ? 1 : 2) + ' ' + u[i];
+}
+function ago(ts) {
+  if (!ts) return 'never';
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+function until(ts) {
+  const s = Math.max(0, Math.floor(ts - Date.now() / 1000));
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return Math.floor(s / 3600) + 'h';
+  return Math.floor(s / 86400) + 'd';
+}
+function fmtTime(ts, withTime = true) {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+    (withTime ? ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '');
+}
+function initials(name) {
+  return String(name || '?').replace(/[^A-Za-z0-9]/g, ' ').trim().split(/\s+/)
+    .map(x => x[0]).join('').slice(0, 2).toUpperCase() || '?';
+}
+function avatarClass(name) {
+  const n = [...String(name || '')].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return ['', 'g', 'p', 'a'][n % 4];
+}
+function statusClass(p) { return p.status || (p.online ? 'online' : 'offline'); }
+
+async function api(path, opts = {}) {
+  const method = opts.method || 'GET';
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (method !== 'GET') headers['X-CSRF-Token'] = CSRF;
+  const res = await fetch(path, {
+    method, headers, credentials: 'same-origin',
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  if (res.status === 401) { location.href = '/login'; throw new Error('Session expired'); }
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text.slice(0, 200) }; }
+  if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+function toast(title, message = '', type = 'ok') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type === 'ok' ? '' : type);
+  el.innerHTML = `<b>${esc(title)}</b>${message ? esc(message) : ''}`;
+  $('#toast-stack').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; setTimeout(() => el.remove(), 300); }, 4200);
+}
+function legacyCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-2000px;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+function copy(text, label = 'Copied to clipboard') {
+  // navigator.clipboard only exists in secure contexts (https or localhost).
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast(label))
+      .catch(() => (legacyCopy(text) ? toast(label) : toast('Copy failed', 'Select and copy manually', 'error')));
+  } else if (legacyCopy(text)) {
+    toast(label);
+  } else {
+    toast('Copy failed', 'Open the panel over HTTPS or copy manually', 'error');
+  }
+}
+function download(path) {
+  const a = document.createElement('a'); a.href = path; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ------------------------------- navigation ------------------------------- */
+const PAGE_META = {
+  overview: ['Overview', 'Live VPN status and traffic'],
+  peers: ['Peers', 'Every VPN user, their connection and usage'],
+  server: ['Server', 'Interface configuration, keys and backups'],
+  telegram: ['Telegram bot', 'Remote control and instant notifications'],
+  settings: ['Settings', 'Defaults, security, API tokens and share links'],
+  activity: ['Activity log', 'Connections and administrative actions'],
+};
+function showView(name) {
+  if (!PAGE_META[name]) name = 'overview';
+  state.view = name;
+  $$('.nav-item').forEach(a => a.classList.toggle('active', a.dataset.view === name));
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  $('#page-title').textContent = PAGE_META[name][0];
+  $('#page-sub').textContent = PAGE_META[name][1];
+  $('#sidebar').classList.remove('open');
+  if (name === 'server') loadServer();
+  if (name === 'settings' || name === 'telegram') loadSettings();
+  if (name === 'activity') loadActivity();
+  if (state.data) renderDynamic();
+}
+
+/* ------------------------------- rendering ------------------------------- */
+function renderDynamic() {
+  const d = state.data; if (!d) return;
+  renderStats(d);
+  state.chartSeries = state.chartHours === 24 ? d.traffic : state.chartSeries;
+  renderChart();
+  renderOnline(d);
+  renderTopUsers(d);
+  renderEvents(d.events || [], '#overview-events');
+  renderPeersTable(d);
+  renderServer(d);
+  renderBot(d);
+  $('#nav-peer-count').textContent = d.stats.total_peers;
+  $('#nav-bot-dot').classList.toggle('on', !!(d.bot && d.bot.enabled && d.bot.running));
+  $('#server-pulse').classList.toggle('off', !d.server.active);
+  $('#sidebar-server').textContent = d.server.interface + (d.demo ? ' (demo)' : '');
+  $('#sidebar-server-status').textContent = d.server.active ? 'interface up' : 'interface down';
+  $('#last-updated').textContent = 'just now';
+  $('#online-badge').textContent = d.stats.online + ' online';
+  $('#peer-total-traffic').textContent = d.stats.total_traffic_h;
+  $('#peer-count-label').textContent = d.stats.total_peers + ' peers · ' + d.stats.online + ' online';
+  $('#srv-dns').value = d.settings.default_dns || '';
+}
+
+function renderStats(d) {
+  const s = d.stats;
+  const cards = [
+    { label: 'Online now', value: s.online, sub: `${s.offline} offline · ${s.disabled} disabled`, icon: 'users', color: 'var(--green)' },
+    { label: 'Total peers', value: s.total_peers, sub: `${s.countries} countries connected`, icon: 'globe', color: 'var(--cyan)' },
+    { label: 'Traffic today', value: s.today_traffic_h, sub: `↓ ${bytes(s.today_rx)} / ↑ ${bytes(s.today_tx)}`, icon: 'activity', color: 'var(--purple)' },
+    { label: 'All-time traffic', value: s.total_traffic_h, sub: `${s.total_peers} configured clients`, icon: 'shield', color: 'var(--amber)' },
+  ];
+  $('#stat-grid').innerHTML = cards.map(c => `
+    <div class="stat-card" style="--stat-color:${c.color};--accent:${c.color}22">
+      <div class="stat-top"><span>${c.label}</span><div class="stat-icon">${ICON(c.icon)}</div></div>
+      <div class="stat-value">${esc(c.value)}</div><div class="stat-sub">${esc(c.sub)}</div>
+    </div>`).join('');
+  const srv = d.server;
+  const sc = [
+    { label: 'Interface', value: srv.interface, sub: srv.active ? '● active' : '○ inactive' },
+    { label: 'Listen port', value: srv.listen_port || '—', sub: 'UDP' },
+    { label: 'Public endpoint', value: (d.endpoint || '').split(':')[0], sub: ':' + (d.endpoint || '').split(':').pop() },
+    { label: 'VPN network', value: srv.network || '—', sub: srv.hostname || '' },
+  ];
+  $('#server-stat-grid').innerHTML = sc.map(c => `
+    <div class="stat-card" style="--stat-color:var(--cyan)">
+      <div class="stat-top"><span>${c.label}</span><div class="stat-icon">${ICON('server')}</div></div>
+      <div class="stat-value" style="font-size:18px;word-break:break-all">${esc(c.value)}</div>
+      <div class="stat-sub">${esc(c.sub)}</div>
+    </div>`).join('');
+}
+
+function renderChart() {
+  const series = state.chartSeries || [];
+  const W = 800, H = 230, pad = { l: 48, r: 12, t: 14, b: 24 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const max = Math.max(1, ...series.map(p => Math.max(p.rx || 0, p.tx || 0))) * 1.15;
+  const x = i => pad.l + (series.length <= 1 ? iw / 2 : i * iw / (series.length - 1));
+  const y = v => pad.t + ih - (v / max) * ih;
+  const path = key => series.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p[key] || 0).toFixed(1)}`).join(' ');
+  const area = key => series.length ? `${path(key)} L${x(series.length - 1).toFixed(1)},${pad.t + ih} L${x(0).toFixed(1)},${pad.t + ih} Z` : '';
+  let grid = '';
+  for (let i = 0; i <= 4; i++) {
+    const gy = pad.t + ih * i / 4;
+    grid += `<line class="chart-grid-line" x1="${pad.l}" y1="${gy}" x2="${W - pad.r}" y2="${gy}"/>
+             <text class="chart-label" x="${pad.l - 8}" y="${gy + 3}" text-anchor="end">${bytes(max * (4 - i) / 4).replace(/ .*/, '')}</text>`;
+  }
+  const labels = series.length ? [0, Math.floor(series.length / 3), Math.floor(series.length * 2 / 3), series.length - 1] : [];
+  labels.forEach((i, n) => {
+    if (i >= series.length) return;
+    const lbl = state.chartHours > 48 ? fmtTime(series[i].ts, false) : new Date(series[i].ts * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    grid += `<text class="chart-label" x="${x(i)}" y="${H - 6}" text-anchor="${n === 0 ? 'start' : n === 3 ? 'end' : 'middle'}">${esc(lbl)}</text>`;
+  });
+  const points = series.map((p, i) => `
+    <circle cx="${x(i).toFixed(1)}" cy="${y(p.rx || 0).toFixed(1)}" r="2.5" fill="var(--green)"><title>${esc(fmtTime(p.ts))} · ↓ ${bytes(p.rx)}</title></circle>
+    <circle cx="${x(i).toFixed(1)}" cy="${y(p.tx || 0).toFixed(1)}" r="2.5" fill="var(--cyan)"><title>${esc(fmtTime(p.ts))} · ↑ ${bytes(p.tx)}</title></circle>`).join('');
+  $('#traffic-chart').innerHTML = series.length ? `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Traffic chart">
+      <defs>
+        <linearGradient id="g-rx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ddc84" stop-opacity=".35"/><stop offset="1" stop-color="#3ddc84" stop-opacity="0"/></linearGradient>
+        <linearGradient id="g-tx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity=".28"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/></linearGradient>
+      </defs>
+      ${grid}<path d="${area('rx')}" fill="url(#g-rx)"/><path d="${area('tx')}" fill="url(#g-tx)"/>
+      <path d="${path('rx')}" fill="none" stroke="#3ddc84" stroke-width="2.2" stroke-linejoin="round"/>
+      <path d="${path('tx')}" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linejoin="round"/>${points}
+    </svg>` : `<div class="empty-state">${ICON('activity')}<br>No traffic samples yet — they appear after a few minutes.</div>`;
+  const rx = series.reduce((a, p) => a + (p.rx || 0), 0), tx = series.reduce((a, p) => a + (p.tx || 0), 0);
+  $('#legend-rx').textContent = bytes(rx); $('#legend-tx').textContent = bytes(tx);
+  $('#chart-subtitle').textContent = `Upload & download over the last ${state.chartHours === 168 ? '7 days' : state.chartHours + ' hours'}`;
+}
+
+function renderOnline(d) {
+  const online = d.peers.filter(p => p.online);
+  $('#online-list').innerHTML = online.length ? online.map(p => `
+    <div class="online-item">
+      <div class="peer-avatar ${avatarClass(p.name)}">${esc(initials(p.name))}</div>
+      <div class="item-main"><b>${esc(p.name)} <span class="status-dot online" style="display:inline-block;margin-left:4px"></span></b>
+        <small>${p.flag} ${esc(p.country || 'Unknown')} ${p.city ? '· ' + esc(p.city) : ''} · <code>${esc(p.last_ip || p.vpn_ip)}</code></small></div>
+      <div class="item-side"><b>${esc(p.total_h)}</b>${esc(p.handshake_h)}</div>
+    </div>`).join('') : `<div class="empty-state">${ICON('users')}<br>Nobody is connected right now.</div>`;
+}
+function renderTopUsers(d) {
+  const peers = [...d.peers].sort((a, b) => b.total - a.total).slice(0, 6);
+  const max = Math.max(1, ...peers.map(p => p.total));
+  $('#top-users').innerHTML = peers.length ? peers.map((p, i) => `
+    <div class="top-user"><span class="rank">#${i + 1}</span>
+      <span class="uname"><span class="status-dot ${statusClass(p)}" style="display:inline-block;margin-right:7px"></span>${esc(p.name)}</span>
+      <span class="progress ${p.quota_pct > 85 ? 'warn' : ''}"><i style="width:${Math.max(3, p.total / max * 100)}%"></i></span>
+      <span class="amt">${esc(p.total_h)}</span></div>`).join('') : `<div class="empty-state">No peers yet.</div>`;
+}
+function renderEvents(events, target) {
+  const el = $(target); if (!el) return;
+  el.innerHTML = events.length ? events.slice(0, 40).map(e => {
+    const kind = (e.type || '').toLowerCase();
+    let det = e.detail;
+    if (typeof det === 'string') { try { det = JSON.parse(det); } catch { det = null; } }
+    return `<div class="event-item"><span class="event-dot ${esc(kind)}"></span>
+      <div class="event-body"><b>${esc(e.message || e.type)}</b>
+      <small>${esc((det && det.ip) || (det && det.country) || e.peer_name || '')}</small></div>
+      <span class="event-time">${ago(e.ts)}</span></div>`;
+  }).join('') : `<div class="empty-state">${ICON('activity')}<br>No events recorded yet.</div>`;
+}
+
+function peerRows(peers) {
+  return peers.map(p => {
+    const st = statusClass(p);
+    const quotaLabel = p.quota_bytes ? `${p.quota_pct}% of ${p.quota_h}` : 'Unlimited';
+    const quotaWarn = p.quota_pct > 85 ? 'warn' : '';
+    const loc = p.country ? `${p.flag} ${esc(p.country)}${p.city ? `<small>${esc(p.city)}</small>` : ''}` : '<span class="muted">—</span>';
+    return `<tr data-id="${esc(p.id)}">
+      <td><div class="peer-cell"><div class="peer-avatar ${avatarClass(p.name)}">${esc(initials(p.name))}</div>
+        <div><b>${esc(p.name)}</b><small><span class="status-dot ${st}"></span> ${esc(st)} · ${esc(p.created_h)}</small></div></div></td>
+      <td><code>${esc(p.vpn_ip)}</code></td>
+      <td><div class="loc-cell">${loc}</div></td>
+      <td><code>${esc(p.last_ip || '—')}</code></td>
+      <td>${esc(p.online ? 'now' : p.last_seen_h)}</td>
+      <td><b>${esc(p.rx_h)}</b> / <span class="muted">${esc(p.tx_h)}</span></td>
+      <td class="quota-cell"><small>${esc(quotaLabel)}</small><div class="progress ${quotaWarn}"><i style="width:${p.quota_bytes ? Math.min(100, p.quota_pct) : 0}%"></i></div></td>
+      <td>${esc(p.expires_h)}${p.days_left !== null ? `<small class="muted" style="display:block">${p.days_left}d left</small>` : ''}</td>
+      <td><button class="kebab" data-act="menu" data-id="${esc(p.id)}" aria-label="Actions">${ICON('more')}</button></td>
+    </tr>`;
+  }).join('');
+}
+function renderPeersTable(d) {
+  const q = state.search.toLowerCase();
+  let peers = d.peers.filter(p => {
+    const f = state.filter;
+    if (f === 'online' && !p.online) return false;
+    if (f === 'offline' && (p.online || !p.enabled)) return false;
+    if (f === 'disabled' && p.enabled) return false;
+    if (q && !(`${p.name} ${p.vpn_ip} ${p.last_ip} ${p.country} ${p.city}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  $('#peers-tbody').innerHTML = peers.length ? peerRows(peers) :
+    `<tr><td colspan="9"><div class="empty-state">${ICON('search')}<br>No peers match your filters.<br><button class="btn btn-ghost" style="margin-top:12px" data-act="emptyadd">+ Add your first peer</button></div></td></tr>`;
+  $('#peer-count-label').textContent = `${peers.length} shown · ${d.stats.total_peers} total`;
+}
+
+function renderServer(d) {
+  const s = d.server;
+  const rows = [
+    ['Hostname', s.hostname], ['Interface', s.interface], ['Status', s.active ? '● up' : '○ down'],
+    ['Endpoint', d.endpoint], ['Server public key', s.public_key], ['VPN network', s.network],
+    ['Config file', s.config_path], ['DNS (interface)', s.dns || 'from client settings'],
+    ['AdGuard Home', s.services['AdGuard Home']], ['Caddy', s.services['Caddy']],
+  ];
+  $('#server-kv').innerHTML = rows.map(([k, v]) => `<div class="kv-row"><span>${esc(k)}</span><b>${esc(v || '—')}</b></div>`).join('');
+  $('#backup-list').innerHTML = d.backups.length ? d.backups.map(b => `
+    <div class="backup-item">${ICON('save')}<div style="flex:1;min-width:0"><b>${esc(b.name)}</b>
+      <small>${fmtTime(b.created_at)} · ${bytes(b.size)} · ${esc(b.reason)}</small></div>
+      <button class="icon-btn" data-act="restore" data-id="${esc(b.name)}" title="Restore">${ICON('refresh')}</button></div>`).join('') :
+    `<div class="empty-state">No backups yet.</div>`;
+}
+function renderBot(d) {
+  const b = d.bot || {};
+  const badge = $('#bot-status-badge');
+  badge.textContent = b.enabled ? (b.running ? '● Connected' : '● Starting…') : 'Not configured';
+  badge.className = 'badge ' + (b.enabled ? 'badge-green' : '');
+  $('#bot-name').textContent = b.username ? '@' + b.username : '@your_bot';
+  $('#bot-desc').textContent = b.enabled
+    ? `Bot is polling for commands. ${b.admins.length} admin chat(s) whitelisted.${b.last_error ? ' Last error: ' + b.last_error : ''}`
+    : 'Create a bot with @BotFather, paste the token below, then add your chat ID.';
+  const cmds = [
+    ['/status', 'Server health and live peers'], ['/peers', 'All peers with action buttons'],
+    ['/add name days quota', 'Create a peer and send its config'], ['/conf name', 'Send the .conf file'],
+    ['/qr name', 'Send the QR code'], ['/usage name', 'Traffic, IP and country'],
+    ['/link name', 'One-time share link'], ['/send name chat_id', 'Send config to any chat'],
+    ['/remove name', 'Revoke a peer (with confirmation)'], ['/backup', 'Download a full backup ZIP'],
+    ['/restart', 'Restart the WireGuard interface'], ['/settings', 'Show key server settings'],
+  ];
+  $('#command-grid').innerHTML = cmds.map(([c, t]) => `<div class="command-card"><code>${esc(c)}</code><span>${esc(t)}</span></div>`).join('');
+}
+
+/* ------------------------------- forms ------------------------------- */
+const NOTIFY_TOGGLES = [
+  ['notify_connect', 'Peer connects', 'Alert when a client establishes a handshake'],
+  ['notify_disconnect', 'Peer disconnects', 'Alert when the handshake goes stale'],
+  ['notify_peer_changes', 'Peers added / removed / disabled', 'Administrative peer changes'],
+  ['notify_quota', 'Quota & auto-disable alerts', 'When a peer reaches its traffic limit'],
+  ['notify_expiry', 'Expiry warnings', '24 hours before a peer expires'],
+  ['notify_daily', 'Daily usage report', 'Summary of peers and traffic'],
+];
+const SETTING_TOGGLES = [
+  ['default_full_tunnel', 'Full tunnel for new peers', 'Route all client traffic through the VPN (AllowedIPs = 0.0.0.0/0)'],
+  ['use_psk', 'Preshared keys', 'Add an extra symmetric key to every new peer'],
+  ['enforce_quota', 'Enforce traffic quotas', 'Automatically disable peers that exceed their limit'],
+  ['enforce_expiry', 'Enforce expiry dates', 'Automatically disable expired peers'],
+  ['auto_backup', 'Automatic config backups', 'Snapshot wg0.conf before every change'],
+  ['require_2fa', 'Require 2FA for all admins', 'Each admin must configure an authenticator'],
+];
+
+async function loadServer() {
+  if (state.forms.server) return;
+  try {
+    const d = await api('/api/server');
+    const f = $('#interface-form');
+    ['address', 'listen_port', 'mtu', 'postup', 'postdown', 'saveconfig'].forEach(k => {
+      if (f.elements[k]) f.elements[k].value = d.interface[k] == null ? '' : d.interface[k];
+    });
+    $('#raw-config').textContent = d.config;
+    state.forms.server = { raw: d.config, shown: false, backups: d.backups };
+  } catch (e) { toast('Could not load server', e.message, 'error'); }
+}
+async function loadSettings() {
+  if (state.forms.settings) return;
+  try {
+    const d = await api('/api/settings');
+    const s = d.settings, f = $('#settings-form');
+    $$('[name]', f).forEach(el => { if (el.type !== 'checkbox' && s[el.name] !== undefined) el.value = s[el.name]; });
+    const tg = $('#telegram-form');
+    tg.elements.telegram_token.value = '';
+    tg.elements.telegram_token.placeholder = s.telegram_token ? 'Configured — leave blank to keep' : '123456789:AAH…';
+    tg.elements.telegram_admins.value = (s.telegram_admins || []).join(', ');
+    $('#settings-toggles').innerHTML = SETTING_TOGGLES.map(([k, t, sub]) => `
+      <div class="toggle-row"><div><b>${t}</b><small>${sub}</small></div>
+        <label class="switch"><input type="checkbox" data-setting-toggle="${k}" ${s[k] ? 'checked' : ''}><span></span></label></div>`).join('');
+    $('#notify-toggles').innerHTML = NOTIFY_TOGGLES.map(([k, t, sub]) => `
+      <div class="toggle-row"><div><b>${t}</b><small>${sub}</small></div>
+        <label class="switch"><input type="checkbox" data-setting-toggle="${k}" ${s[k] ? 'checked' : ''}><span></span></label></div>`).join('');
+    $('#daily-time').value = s.daily_report_time || '09:00';
+    state.forms.settings = d;
+    renderTokens(d.tokens || []); renderShares(d.shares || []);
+  } catch (e) { toast('Could not load settings', e.message, 'error'); }
+}
+function renderTokens(tokens) {
+  $('#token-list').innerHTML = tokens.length ? tokens.map(t => `
+    <div class="token-item">${ICON('key')}<div style="flex:1;min-width:0"><b>${esc(t.name)}</b>
+      <small>ID ${esc(t.id)} · created ${fmtTime(t.created_at)} · last used ${t.last_used ? ago(t.last_used) : 'never'}</small></div>
+      <button class="icon-btn" data-act="deltoken" data-id="${esc(t.id)}" title="Revoke">${ICON('trash')}</button></div>`).join('') :
+    `<div class="empty-state">No API tokens. Create one for scripts.</div>`;
+}
+function renderShares(shares) {
+  const now = Date.now() / 1000;
+  $('#share-list').innerHTML = shares.length ? shares.filter(s => s.expires_at > now).map(s => `
+    <div class="share-item">${ICON('link')}<div style="flex:1;min-width:0"><b>${esc(s.peer_id)}</b>
+      <small>${s.uses}/${s.max_uses} uses · expires in ${until(s.expires_at)}</small></div>
+      <button class="icon-btn" data-act="copyshare" data-id="${esc(s.token)}" title="Copy link">${ICON('copy')}</button>
+      <button class="icon-btn" data-act="delshare" data-id="${esc(s.token)}" title="Revoke">${ICON('trash')}</button></div>`).join('') :
+    `<div class="empty-state">No active share links.</div>`;
+}
+async function loadActivity() {
+  try {
+    const [ev, au] = await Promise.all([api('/api/events?limit=200'), api('/api/audit?limit=200')]);
+    renderEvents(ev.events, '#activity-events');
+    $('#audit-list').innerHTML = au.audit.length ? au.audit.map(a => `
+      <div class="audit-item"><span class="actor">${esc(a.actor)}</span><code>${esc(a.action)}</code>
+        <span class="detail">${esc(a.detail || a.ip || '')}</span><time>${ago(a.ts)}</time></div>`).join('') :
+      `<div class="empty-state">No admin actions yet.</div>`;
+  } catch (e) { toast('Could not load activity', e.message, 'error'); }
+}
+
+/* ------------------------------- modals ------------------------------- */
+/* Show/hide overlays explicitly. Relying on the `hidden` attribute alone is
+   fragile: any author CSS with `display:flex` would override it. */
+function setOverlay(el, on, display = 'flex') {
+  if (!el) return;
+  el.hidden = !on;
+  el.style.display = on ? display : 'none';
+}
+function openModal(title, body, foot = '', wide = false) {
+  $('#modal-title').textContent = title;
+  $('#modal-body').innerHTML = body;
+  $('#modal-foot').innerHTML = foot;
+  $('#modal').classList.toggle('wide', wide);
+  setOverlay($('#modal-backdrop'), true);
+}
+function closeModal() {
+  setOverlay($('#modal-backdrop'), false);
+  $('#modal-body').innerHTML = '';
+  $('#modal-foot').innerHTML = '';
+}
+function confirmModal(title, message, onYes, danger = true) {
+  openModal(title, `<p style="color:var(--muted);font-size:13px;line-height:1.7">${message}</p>`,
+    `<button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+     <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="confirm-yes">Confirm</button>`);
+  $('#confirm-cancel').onclick = closeModal;
+  $('#confirm-yes').onclick = async () => {
+    const b = $('#confirm-yes'); b.disabled = true;
+    try { await onYes(); closeModal(); await refresh(); }
+    catch (e) { toast('Action failed', e.message, 'error'); b.disabled = false; }
+  };
+}
+
+function addPeerModal() {
+  const d = state.data, s = d.settings;
+  openModal('Add a new peer', `
+    <form id="add-peer-form" class="form-grid">
+      <label class="field span-2"><span>Peer name *</span><input name="name" required maxlength="48" placeholder="e.g. phone-sara" autofocus><small>Used for the config filename and in the peer list.</small></label>
+      <label class="field"><span>VPN IP (optional)</span><input name="vpn_ip" placeholder="${esc(d.peers.length ? 'Next free in ' + d.network : '10.8.0.2/32')}"></label>
+      <label class="field"><span>Telegram chat ID (optional)</span><input name="telegram_chat_id" placeholder="e.g. 123456789"><small>Lets you push this config to that chat with one click.</small></label>
+      <label class="field"><span>Expiry (days, 0 = never)</span><input name="expiry_days" type="number" min="0" value="${esc(s.default_expiry_days)}"></label>
+      <label class="field"><span>Traffic quota (GB, 0 = unlimited)</span><input name="quota_gb" type="number" min="0" step="0.5" value="${esc(s.default_quota_gb)}"></label>
+      <label class="field span-2"><span>Routing</span>
+        <select name="full_tunnel"><option value="true" ${s.default_full_tunnel ? 'selected' : ''}>Full tunnel — all traffic through VPN (${esc(s.default_allowed_ips)})</option>
+        <option value="false" ${!s.default_full_tunnel ? 'selected' : ''}>Split tunnel — only ${esc(d.network)}</option></select></label>
+      <label class="field span-2"><span>Custom AllowedIPs (overrides routing)</span><input name="allowed_ips" placeholder="Leave empty to use routing above"></label>
+      <label class="field"><span>DNS (optional)</span><input name="dns" placeholder="${esc(s.default_dns)}"></label>
+      <label class="field"><span>MTU / keepalive</span><div style="display:flex;gap:8px"><input name="mtu" type="number" value="${esc(s.default_mtu)}"><input name="keepalive" type="number" value="${esc(s.default_keepalive)}"></div></label>
+      <label class="field span-2 check"><input type="checkbox" name="use_psk" ${s.use_psk ? 'checked' : ''}> Use a preshared key (recommended)</label>
+      <label class="field span-2"><span>Notes</span><textarea name="notes" placeholder="Anything you want to remember about this user"></textarea></label>
+      <div class="span-2" id="add-peer-error" style="color:var(--red);font-size:12px"></div>
+    </form>`,
+    `<button class="btn btn-ghost" id="add-cancel">Cancel</button><button class="btn btn-primary" id="add-submit">${ICON('plus')} Create peer</button>`);
+  $('#add-cancel').onclick = closeModal;
+  $('#add-submit').onclick = async () => {
+    const f = $('#add-peer-form'), fd = new FormData(f);
+    const body = Object.fromEntries(fd.entries());
+    body.full_tunnel = body.full_tunnel === 'true';
+    body.use_psk = !!body.use_psk;
+    const btn = $('#add-submit'); btn.disabled = true; btn.textContent = 'Creating…';
+    try {
+      const res = await api('/api/peers', { method: 'POST', body });
+      closeModal(); await refresh();
+      toast('Peer created', res.peer.name + ' · ' + res.peer.vpn_ip);
+      await configModal(res.peer.id);
+    } catch (e) {
+      $('#add-peer-error').textContent = e.message;
+      btn.disabled = false; btn.innerHTML = ICON('plus') + ' Create peer';
+    }
+  };
+  f_enter_submit('#add-peer-form', '#add-submit');
+}
+function f_enter_submit(formSel, btnSel) {
+  const f = $(formSel); if (!f) return;
+  f.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); $(btnSel).click(); } });
+}
+
+async function configModal(id) {
+  const p = (state.data.peers || []).find(x => x.id === id) || {};
+  openModal('Config & QR · ' + (p.name || ''), '<div class="empty-state">Generating QR code…</div>', '', true);
+  try {
+    const [conf, svg] = await Promise.all([
+      api(`/api/peers/${id}/conf`, { method: 'POST', body: {} }),
+      fetch(`/api/peers/${id}/qr.svg`, { credentials: 'same-origin' }).then(r => r.text()),
+    ]);
+    openModal('Config & QR · ' + (p.name || ''), `
+      <div class="tabs"><button class="active" id="tab-qr">QR code</button><button id="tab-conf">Config file</button></div>
+      <div id="qr-pane"><div class="qr-wrap">${svg}</div>
+        <p class="hint" style="text-align:center;margin:0">Scan with the WireGuard app on iOS, Android, Windows or macOS.</p></div>
+      <div id="conf-pane" hidden><pre class="conf-box" id="conf-text">${esc(conf.conf)}</pre></div>
+      <div class="detail-stats" style="margin-top:18px">
+        <div><small>VPN IP</small><b style="font-size:12px">${esc(p.vpn_ip)}</b></div>
+        <div><small>Endpoint</small><b style="font-size:12px;word-break:break-all">${esc(state.data.endpoint)}</b></div>
+        <div><small>Expires</small><b style="font-size:12px">${esc(p.expires_h || 'Never')}</b></div>
+      </div>
+      <div id="share-result"></div>`, `
+      <button class="btn btn-ghost" data-act="copyconf" data-id="${esc(id)}">${ICON('copy')} Copy</button>
+      <button class="btn btn-ghost" data-act="share" data-id="${esc(id)}">${ICON('link')} Share link</button>
+      <button class="btn btn-ghost" data-act="send" data-id="${esc(id)}">${ICON('bot')} Telegram</button>
+      <a class="btn btn-ghost" href="/api/peers/${esc(id)}/qr.png">${ICON('download')} PNG</a>
+      <a class="btn btn-primary" href="/api/peers/${esc(id)}/config">${ICON('download')} Download .conf</a>`, true);
+    $('#tab-qr').onclick = () => { $('#tab-qr').classList.add('active'); $('#tab-conf').classList.remove('active'); $('#qr-pane').hidden = false; $('#conf-pane').hidden = true; };
+    $('#tab-conf').onclick = () => { $('#tab-conf').classList.add('active'); $('#tab-qr').classList.remove('active'); $('#conf-pane').hidden = false; $('#qr-pane').hidden = true; };
+  } catch (e) { openModal('Config & QR', `<div class="empty-state" style="color:var(--red)">${esc(e.message)}</div>`); }
+}
+
+/* ------------------------------- drawer ------------------------------- */
+function openDrawerBackdrop(html, title, sub) {
+  $('#drawer-title').textContent = title; $('#drawer-sub').textContent = sub;
+  $('#drawer-body').innerHTML = html; setOverlay($('#drawer-backdrop'), true, 'flex');
+}
+function closeDrawer() { setOverlay($('#drawer-backdrop'), false, 'flex'); }
+function miniChart(samples) {
+  const s = samples.filter(x => x.ts).slice(-90);
+  if (s.length < 2) return '<div class="empty-state">No samples yet.</div>';
+  const W = 440, H = 70, max = Math.max(1, ...s.map(x => Math.max(x.rx || 0, x.tx || 0)));
+  const path = k => s.map((p, i) => `${i ? 'L' : 'M'}${(i * W / (s.length - 1)).toFixed(1)},${(H - (p[k] || 0) / max * H).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:80px;background:var(--bg-soft);border-radius:10px;padding:6px">
+    <path d="${path('rx')}" fill="none" stroke="#3ddc84" stroke-width="2"/><path d="${path('tx')}" fill="none" stroke="#38bdf8" stroke-width="2"/></svg>`;
+}
+async function openDrawer(id) {
+  openDrawerBackdrop('<div class="empty-state">Loading peer…</div>', 'Peer', '');
+  try {
+    const d = await api(`/api/peers/${id}/details`);
+    const p = d.peer;
+    openDrawerBackdrop(`
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div class="peer-avatar ${avatarClass(p.name)}" style="width:46px;height:46px;font-size:15px">${esc(initials(p.name))}</div>
+        <div style="flex:1"><h3 style="margin:0;font-size:17px">${esc(p.name)} <span class="status-dot ${statusClass(p)}" style="display:inline-block;margin-left:5px"></span></h3>
+        <small class="muted">${esc(p.status)} · created ${esc(p.created_h)}</small></div>
+        <span class="badge ${p.online ? 'badge-green' : ''}">${p.online ? 'online' : 'offline'}</span>
+      </div>
+      <div class="detail-stats">
+        <div><small>Download</small><b>${esc(p.rx_h)}</b></div><div><small>Upload</small><b>${esc(p.tx_h)}</b></div>
+        <div><small>Total</small><b>${esc(p.total_h)}</b></div>
+        <div><small>Source IP</small><b style="font-size:11px">${esc(p.last_ip || '—')}</b></div>
+        <div><small>Location</small><b style="font-size:12px">${p.flag} ${esc(p.country || 'Unknown')}</b></div>
+        <div><small>ISP</small><b style="font-size:10.5px;word-break:break-all">${esc(p.isp || '—')}</b></div>
+      </div>
+      <div class="detail-section">Traffic (last 7 days)</div>${miniChart(d.samples)}
+      <div class="detail-section">Quota · ${p.quota_bytes ? p.quota_pct + '% used' : 'unlimited'}</div>
+      <div class="progress ${p.quota_pct > 85 ? 'warn' : ''}"><i style="width:${p.quota_bytes ? Math.min(100, p.quota_pct) : 0}%"></i></div>
+      <div class="detail-section">Actions</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" data-act="qr" data-id="${esc(id)}">${ICON('qr')} QR / config</button>
+        <a class="btn btn-ghost" href="/api/peers/${esc(id)}/config">${ICON('download')} .conf</a>
+        <button class="btn btn-ghost" data-act="send" data-id="${esc(id)}">${ICON('bot')} Telegram</button>
+        <button class="btn btn-ghost" data-act="share" data-id="${esc(id)}">${ICON('link')} Link</button>
+        <button class="btn btn-ghost" data-act="toggle" data-id="${esc(id)}">${ICON('refresh')} ${p.enabled ? 'Disable' : 'Enable'}</button>
+        <button class="btn btn-ghost" data-act="rekey" data-id="${esc(id)}">${ICON('key')} New keys</button>
+        <button class="btn btn-danger" data-act="remove" data-id="${esc(id)}">${ICON('trash')} Remove</button>
+      </div>
+      <div class="detail-section">Edit peer</div>
+      <form id="edit-peer-form" class="form-grid">
+        <label class="field"><span>Name</span><input name="name" value="${esc(p.name)}"></label>
+        <label class="field"><span>VPN IP</span><input name="vpn_ip" value="${esc(p.vpn_ip)}"></label>
+        <label class="field"><span>Telegram chat ID</span><input name="telegram_chat_id" value="${esc(p.telegram_chat_id)}"></label>
+        <label class="field"><span>Expires (date)</span><input name="expiry_date" type="date" value="${p.expires_at ? new Date(p.expires_at * 1000).toISOString().slice(0, 10) : ''}"></label>
+        <label class="field"><span>Quota (GB, 0 = unlimited)</span><input name="quota_gb" type="number" step="0.5" min="0" value="${(p.quota_bytes / 1073741824).toFixed(2).replace(/\.00$/, '')}"></label>
+        <label class="field"><span>Keepalive / MTU</span><div style="display:flex;gap:8px"><input name="keepalive" type="number" value="${esc(p.keepalive)}"><input name="mtu" type="number" value="${esc(p.mtu)}"></div></label>
+        <label class="field span-2"><span>DNS</span><input name="dns" value="${esc(p.dns)}" placeholder="${esc(state.data.settings.default_dns)}"></label>
+        <label class="field span-2"><span>AllowedIPs (client)</span><input name="allowed_ips" value="${esc(p.allowed_ips)}"></label>
+        <label class="field span-2"><span>Notes</span><textarea name="notes">${esc(p.notes)}</textarea></label>
+        <div class="form-actions span-2"><button class="btn btn-primary" type="submit">${ICON('save')} Save changes</button></div>
+      </form>
+      <div class="detail-section">Recent events</div>
+      <div class="event-list" id="drawer-events"></div>`, p.name, `${p.vpn_ip} · ${p.flag} ${p.country || 'Unknown'} · last seen ${p.last_seen_h}`);
+    renderEvents(d.events || [], '#drawer-events');
+    $('#edit-peer-form').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target), b = Object.fromEntries(fd.entries());
+      b.quota_bytes = Math.round(Number(b.quota_gb || 0) * 1073741824);
+      b.expires_at = b.expiry_date ? Math.floor(new Date(b.expiry_date + 'T23:59:59').getTime() / 1000) : 0;
+      delete b.quota_gb; delete b.expiry_date;
+      try { await api(`/api/peers/${id}`, { method: 'PATCH', body: b }); toast('Peer updated', p.name); closeDrawer(); await refresh(); }
+      catch (err) { toast('Update failed', err.message, 'error'); }
+    };
+  } catch (e) { toast('Could not load peer', e.message, 'error'); closeDrawer(); }
+}
+
+/* ------------------------------- actions ------------------------------- */
+function closeMenus() { $$('.menu-pop').forEach(m => m.remove()); }
+function openMenu(x, y, id) {
+  closeMenus();
+  const p = (state.data.peers || []).find(a => a.id === id); if (!p) return;
+  const items = [
+    ['details', 'edit', 'Details & edit'], ['qr', 'qr', 'QR code & config'],
+    ['download', 'download', 'Download .conf'], ['send', 'bot', 'Send to Telegram'],
+    ['share', 'link', 'Create share link'], ['rekey', 'key', 'Regenerate keys'],
+    ['toggle', 'refresh', p.enabled ? 'Disable peer' : 'Enable peer'],
+    ['-', '', ''], ['remove', 'trash', 'Remove peer'],
+  ];
+  const menu = document.createElement('div'); menu.className = 'menu-pop';
+  menu.innerHTML = items.map(([act, ico, label]) => act === '-' ? '<hr>' :
+    `<button data-act="${act}" data-id="${esc(id)}" class="${act === 'remove' ? 'danger' : ''}">${ICON(ico)} ${label}</button>`).join('');
+  document.body.appendChild(menu);
+  menu.style.left = Math.min(x, innerWidth - 210) + 'px';
+  menu.style.top = Math.min(y, innerHeight - menu.offsetHeight - 10) + 'px';
+}
+
+const ACTIONS = {
+  menu: (id, el) => { const r = el.getBoundingClientRect(); openMenu(r.left - 170, r.bottom + 4, id); },
+  details: id => openDrawer(id), qr: id => configModal(id),
+  download: id => download(`/api/peers/${id}/config`),
+  edit: id => openDrawer(id),
+  emptyadd: () => addPeerModal(),
+  copyconf: () => copy($('#conf-text') ? $('#conf-text').textContent : ''),
+  copyshare: id => copy(location.origin + '/s/' + id, 'Share link copied'),
+  async send(id) {
+    const p = (state.data.peers || []).find(a => a.id === id);
+    const chat = prompt('Telegram chat ID to send the config + QR to:', p && p.telegram_chat_id ? p.telegram_chat_id : '');
+    if (!chat) return;
+    try { await api(`/api/peers/${id}/telegram`, { method: 'POST', body: { chat_id: chat } }); toast('Sent on Telegram', 'Config and QR delivered to ' + chat); }
+    catch (e) { toast('Telegram send failed', e.message, 'error'); }
+  },
+  async share(id) {
+    try {
+      const r = await api(`/api/peers/${id}/share`, { method: 'POST', body: {} });
+      const url = location.origin + r.share.path;
+      const box = $('#share-result');
+      if (box) box.innerHTML = `<div class="share-url" id="new-share-url">${esc(url)} <button class="btn btn-ghost" data-act="copylink" style="margin-left:auto">${ICON('copy')}</button></div>`;
+      else openModal('Share link', `<p class="hint">Send this private link to the user. It expires automatically and can only be used a limited number of times.</p><div class="share-url">${esc(url)}</div>`, `<button class="btn btn-ghost" data-act="copylink">${ICON('copy')} Copy link</button><button class="btn btn-primary" id="share-close">Done</button>`);
+      const sc = $('#share-close'); if (sc) sc.onclick = closeModal;
+      state._lastShare = url;
+      toast('Share link created', 'Expires in 24 hours');
+    } catch (e) { toast('Could not create link', e.message, 'error'); }
+  },
+  copylink: () => copy(state._lastShare || ($('.share-url') ? $('.share-url').textContent.trim() : ''), 'Share link copied'),
+  async rekey(id) {
+    const p = (state.data.peers || []).find(a => a.id === id);
+    confirmModal('Regenerate keys?', `This creates a brand new keypair for <b>${esc(p ? p.name : id)}</b>. The old config will stop working — send the new one to the user.`,
+      async () => { await api(`/api/peers/${id}/rekey`, { method: 'POST', body: {} }); toast('Keys regenerated'); await configModal(id); });
+  },
+  toggle: async id => {
+    const p = (state.data.peers || []).find(a => a.id === id); if (!p) return;
+    await api(`/api/peers/${id}/${p.enabled ? 'disable' : 'enable'}`, { method: 'POST', body: {} });
+    toast(p.enabled ? 'Peer disabled' : 'Peer enabled', p.name); closeDrawer(); await refresh();
+  },
+  remove: id => {
+    const p = (state.data.peers || []).find(a => a.id === id);
+    confirmModal('Remove peer?', `Permanently delete <b>${esc(p ? p.name : id)}</b> and remove it from wg0.conf. The user will be disconnected immediately and cannot reconnect.`,
+      async () => { await api(`/api/peers/${id}`, { method: 'DELETE' }); toast('Peer removed', p ? p.name : ''); });
+  },
+  restore: name => confirmModal('Restore backup?', `Replace the current wg0.conf with <b>${esc(name)}</b>? A safety backup of the current file is made first.`,
+    async () => { const r = await api('/api/server/restore', { method: 'POST', body: { name } }); toast('Backup restored', r.message); }, false),
+  async deltoken(id) {
+    await api(`/api/tokens/${id}`, { method: 'DELETE' }); toast('Token revoked');
+    state.forms.settings = null; await loadSettings();
+  },
+  async delshare(token) {
+    await api(`/api/shares/${token}`, { method: 'DELETE' }); toast('Share link revoked');
+    state.forms.settings = null; await loadSettings();
+  },
+};
+
+/* ------------------------------- events ------------------------------- */
+document.addEventListener('click', e => {
+  const nav = e.target.closest('.nav-item, [data-view-link]');
+  if (nav) { e.preventDefault(); showView(nav.dataset.view || nav.dataset.viewLink); return; }
+  const act = e.target.closest('[data-act]');
+  if (act) {
+    e.preventDefault();
+    const fn = ACTIONS[act.dataset.act];
+    if (fn) { closeMenus(); fn(act.dataset.id, act); }
+    return;
+  }
+  const row = e.target.closest('#peers-tbody tr[data-id]');
+  if (row) { e.preventDefault(); openDrawer(row.dataset.id); return; }
+  if (!e.target.closest('.menu-pop')) closeMenus();
+});
+$('#modal-close').onclick = closeModal;
+$('#drawer-close').onclick = closeDrawer;
+$('#modal-backdrop').onclick = e => { if (e.target.id === 'modal-backdrop') closeModal(); };
+$('#drawer-backdrop').onclick = e => { if (e.target.id === 'drawer-backdrop') closeDrawer(); };
+$('#menu-btn').onclick = () => $('#sidebar').classList.toggle('open');
+$('#add-peer-top').onclick = addPeerModal;
+$('#add-peer-btn').onclick = addPeerModal;
+$('#refresh-btn').onclick = () => refresh();
+$('#logout-btn').onclick = async () => { try { await api('/api/logout', { method: 'POST', body: {} }); } catch {} location.href = '/login'; };
+$('#peer-search').addEventListener('input', e => { state.search = e.target.value; if (state.data) renderPeersTable(state.data); });
+$('#peer-filters').onclick = e => {
+  const b = e.target.closest('[data-filter]'); if (!b) return;
+  state.filter = b.dataset.filter;
+  $$('#peer-filters .chip').forEach(c => c.classList.toggle('active', c === b));
+  if (state.data) renderPeersTable(state.data);
+};
+$$('#chart-range button').forEach(b => b.onclick = async () => {
+  $$('#chart-range button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); state.chartHours = Number(b.dataset.hours);
+  try { const r = await api(`/api/traffic?hours=${state.chartHours}`); state.chartSeries = r.series; renderChart(); }
+  catch (e) { toast('Chart error', e.message, 'error'); }
+});
+$('#sync-btn').onclick = async () => {
+  try { const r = await api('/api/server/sync', { method: 'POST', body: {} }); toast('Synced with wg0.conf', `${r.imported.length} new peer(s) imported`); await refresh(); }
+  catch (e) { toast('Sync failed', e.message, 'error'); }
+};
+$('#backup-btn').onclick = async () => { try { await api('/api/server/backup', { method: 'POST', body: {} }); toast('Backup created'); await refresh(); } catch (e) { toast('Backup failed', e.message, 'error'); } };
+$('#backup-zip-btn').onclick = () => download('/api/server/backup.zip');
+$('#restart-btn').onclick = () => confirmModal('Restart WireGuard?', 'All connected clients will briefly lose the tunnel and reconnect automatically.',
+  async () => { const r = await api('/api/server/restart', { method: 'POST', body: {} }); toast(r.ok ? 'WireGuard restarted' : 'Restart failed', r.output, r.ok ? 'ok' : 'error'); });
+$('#rotate-btn').onclick = () => confirmModal('Rotate server keys?', 'This generates a new server keypair. <b>Every client config becomes invalid</b> until you re-download it. Keep a backup before continuing.',
+  async () => { await api('/api/server/rotate-keys', { method: 'POST', body: {} }); toast('Server keys rotated', 'Re-issue every client config'); });
+$('#interface-form').onsubmit = async e => {
+  e.preventDefault(); const fd = new FormData(e.target);
+  try { await api('/api/server/interface', { method: 'POST', body: Object.fromEntries(fd.entries()) }); toast('Interface saved', 'Restart WireGuard to apply address/port changes'); }
+  catch (err) { toast('Save failed', err.message, 'error'); }
+};
+$('#settings-form').onsubmit = async e => {
+  e.preventDefault(); const fd = new FormData(e.target), b = {};
+  const numeric = ['online_timeout', 'sample_interval', 'default_mtu', 'default_keepalive', 'default_expiry_days', 'share_link_hours', 'history_days'];
+  fd.forEach((v, k) => { b[k] = numeric.includes(k) ? Number(v) : v; });
+  b.default_quota_gb = Number(fd.get('default_quota_gb'));
+  $$('[data-setting-toggle]').forEach(el => { b[el.dataset.settingToggle] = el.checked; });
+  try { await api('/api/settings', { method: 'POST', body: b }); toast('Settings saved'); state.forms.settings = null; await loadSettings(); await refresh(); }
+  catch (err) { toast('Save failed', err.message, 'error'); }
+};
+$('#telegram-form').onsubmit = async e => {
+  e.preventDefault(); const fd = new FormData(e.target);
+  const token = String(fd.get('telegram_token') || '');
+  const admins = String(fd.get('telegram_admins') || '').split(/[\s,]+/).filter(Boolean);
+  const b = { telegram_admins: admins };
+  if (token) b.telegram_token = token;
+  try { await api('/api/settings', { method: 'POST', body: b }); toast('Telegram settings saved', 'The bot reconnects automatically'); state.forms.settings = null; await loadSettings(); await refresh(); }
+  catch (err) { toast('Save failed', err.message, 'error'); }
+};
+$('#telegram-test-btn').onclick = async () => {
+  try { const r = await api('/api/settings/telegram/test', { method: 'POST', body: {} }); toast(r.ok ? 'Test message sent' : 'Test failed', r.message, r.ok ? 'ok' : 'error'); }
+  catch (e) { toast('Test failed', e.message, 'error'); }
+};
+$('#save-notify-btn').onclick = async () => {
+  const b = { daily_report_time: $('#daily-time').value };
+  $$('#notify-toggles [data-setting-toggle]').forEach(el => { b[el.dataset.settingToggle] = el.checked; });
+  try { await api('/api/settings', { method: 'POST', body: b }); toast('Notification settings saved'); }
+  catch (e) { toast('Save failed', e.message, 'error'); }
+};
+$('#password-form').onsubmit = async e => {
+  e.preventDefault(); const fd = new FormData(e.target);
+  try { await api('/api/settings/password', { method: 'POST', body: Object.fromEntries(fd.entries()) }); e.target.reset(); toast('Password updated'); }
+  catch (err) { toast('Could not update password', err.message, 'error'); }
+};
+$('#new-token-btn').onclick = async () => {
+  const name = prompt('Token name:', 'automation'); if (!name) return;
+  try {
+    const r = await api('/api/tokens', { method: 'POST', body: { name } });
+    openModal('New API token', `<p class="hint">Copy this token now — it is shown only once.</p><div class="share-url" id="token-value">${esc(r.token)}</div>
+      <pre class="conf-box">curl -H "X-API-Key: ${esc(r.token)}" ${esc(location.origin)}/api/state</pre>`,
+      `<button class="btn btn-primary" id="copy-token">${ICON('copy')} Copy token</button><button class="btn btn-ghost" id="token-done">Done</button>`);
+    $('#copy-token').onclick = () => copy(r.token, 'Token copied');
+    $('#token-done').onclick = closeModal;
+    state.forms.settings = null; await loadSettings();
+  } catch (e) { toast('Could not create token', e.message, 'error'); }
+};
+$('#twofa-btn').onclick = async () => {
+  try {
+    const r = await api('/api/settings/2fa');
+    $('#twofa-setup').hidden = false;
+    $('#twofa-qr').innerHTML = r.qr;
+    $('#twofa-secret').textContent = r.secret;
+    $('#twofa-btn').textContent = 'Refresh secret';
+    $('#twofa-setup').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (e) { toast('2FA setup failed', e.message, 'error'); }
+};
+$('#twofa-verify').onclick = async () => {
+  try { await api('/api/settings/2fa', { method: 'POST', body: { code: $('#twofa-code').value } });
+    toast('2FA enabled', 'You will need a code at your next login'); $('#twofa-setup').hidden = true; $('#twofa-status').textContent = 'Two-factor authentication is enabled.'; }
+  catch (e) { toast('Invalid code', e.message, 'error'); }
+};
+$('#events-refresh').onclick = loadActivity;
+
+/* ------------------------------- boot ------------------------------- */
+async function refresh() {
+  try { state.data = await api('/api/state'); state.lastRefresh = Date.now(); renderDynamic(); }
+  catch (e) { toast('Refresh failed', e.message, 'error'); }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeDrawer(); closeMenus(); }
+  if (e.key === 'n' && !/input|textarea|select/i.test(document.activeElement.tagName)) addPeerModal();
+});
+// Force overlays closed on boot, even if a stale stylesheet is cached.
+closeModal(); closeDrawer();
+const hash = location.hash.replace('#', '');
+showView(hash || 'overview');
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+setInterval(() => { $('#last-updated').textContent = Math.round((Date.now() - state.lastRefresh) / 1000) + 's ago'; }, 1000);
+
+</script>
+</body>
+</html>
